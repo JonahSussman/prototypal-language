@@ -1,0 +1,27 @@
+let x = 4
+let y = x
+println(y)
+
+if x == 4 then 
+  println("yay!") 
+elif x == 5 then
+  println("huh?") 
+else 
+  println("boo!") 
+end
+
+let obj = {}
+obj.x
+obj.x = 4
+obj.x
+
+obj.f = fun [x] x*x
+obj.f
+obj.f(4)
+
+obj.nest = {}
+obj.nest.x
+obj.nest.x = 4
+obj.nest.x
+
+# set to nil removes it

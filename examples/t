@@ -1,0 +1,16 @@
+let Window = {}
+Window.prototype = { .x = 0, .y = 0, ["width"] = 100, ["height"] = 100 }
+Window.mt = {}
+
+Window.new = fun [o] do
+  setmeta(o, Window.mt)
+  return o
+  println("poopy!")
+end
+
+Window.mt.__get = fun [thing, key] Window.prototype[key]
+
+let w = Window.new({.x = 10, .y = 20})
+w.width = 200
+w.width
+Window.prototype.width

@@ -1,0 +1,48 @@
+let size = input("How big do you want your diamond? ")
+while (size = Number(size)) == nil do
+  size = input("Please enter a number. ")
+end
+
+let depth = 2*(size-1) + 1
+let left  = size
+let right = size
+
+if size == 0 then
+  println("")
+elif size == 1 then
+  println("#")
+else
+  while left != 0 do
+    let i = 0
+    while i <= depth do
+      if (i == left) or (i == right) then
+        print("#")
+      else
+        print(" ")
+      end
+      i = i + 1
+    end
+    print("\n")
+
+    left = left - 1
+    right = right + 1
+  end
+
+  # print("huh")
+
+  while left != size + 1 do
+    let i = 0
+    while i <= depth do
+      if (i == left) or (i == right) then
+        print("#")
+      else
+        print(" ")
+      end
+      i = i + 1
+    end
+    print("\n")
+
+    left = left + 1
+    right = right - 1
+  end
+end

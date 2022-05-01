@@ -1,0 +1,29 @@
+let make_generator = fun [a, c, m]
+  return {
+    .state = mod(gettime(), m),
+    .rnd = fun [self]
+      self.state = mod((a * self.state + c), m),
+    .seed = fun [self, new_seed]
+      self.state = mod(new_seed, m),
+  }
+
+rng = make_generator(1103515245, 12345, 2147483648)
+
+let game = fun [number] do
+  println("I am thinking of a number between 0 and 100. Try and guess it!")
+  let guess = -1
+  while guess != number do
+    guess = Number(input())
+    if guess == nil then
+      println("Please enter a number!")
+    elif guess > number then
+      println("Lower!")
+    elif guess < number then
+      println("Higher!")
+    else
+      println("You got it!")
+    end
+  end
+end
+
+game(mod(rng:rnd(), 100))

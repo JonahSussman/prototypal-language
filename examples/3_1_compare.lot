@@ -1,0 +1,9 @@
+# The following program prints nothing but "passed"
+let assert = fun [expr] println(if expr then "passed" else "failed" end)
+println("Testing equality")
+assert(3 == 3)
+assert(3 != 4)
+assert(true == true)
+assert(true != false)
+assert("Suprising?" == "Suprising?")
+assert("Suprising?" != "Not really.")

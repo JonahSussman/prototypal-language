@@ -1,0 +1,33 @@
+block ::= ( expr ";"? )*
+
+expr ::= "do" block "end"
+  | "while" expr "do" block "end"
+  | "if" expr "then" block ( "elif" expr "then" block )* ( "else" block )? "end"
+  | "fun" "[" symlist? "]" expr
+  | "let" SYMBOL "=" expr
+  | "return" expr
+  | assignment
+
+exprlist   ::= expr ( "," expr)*
+symlist    ::= SYMBOL ( "," SYMBOL )*
+fieldlist  ::= fieldinit ( "," fieldinit )* ","?
+fieldinit  ::= ( field "=" )? expr 
+field      ::= "[" expr "]" | "." SYMBOL
+
+assignment ::= call "=" expr | logic_or
+logic_or   ::= logic_and ( "or" logic_and )
+logic_and  ::= equality ( "and" equality )*
+equality   ::= comparison ( ( "!=" | "==" ) comparison )*
+comparison ::= term ( ( ">" | ">=" | "<" | "<=" ) term )*
+term       ::= factor ( ( "-" | "+" ) factor )*
+factor     ::= unary ( ( "/" | "*" ) unary )*
+unary      ::= ( "!" | "-" ) unary | call
+call       ::= primary ( "(" exprlist? ")" | field | ":" SYMBOL "(" exprlist? ")" )*
+primary    ::= "true" | "false" | "nil" | NUMBER | STRING | SYMBOL | "(" expr ")"
+            | "{" fieldlist? "}" ] | "[" exprlist? "]"
+
+NUMBER ::= DIGIT+ ( "." DIGIT+ )? 
+STRING ::= ( "\"" <any char except "\"">* "\"" )
+SYMBOL ::= ALPHA ( ALPHA | DIGIT )* 
+ALPHA ::= "a" ... "z" | "A" ... "Z" | "_" 
+DIGIT ::= "0" ... "9" 

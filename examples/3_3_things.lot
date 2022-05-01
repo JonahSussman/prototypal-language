@@ -1,0 +1,77 @@
+let assert = fun [expr] println(if expr then "passed" else "failed" end)
+
+let a = {}
+a.a = 10         # Access using dot notation
+a.b = "whatever" # Symbols get converted to strings internally
+a["b"] = "huh?"  # Overwrite the previous statement
+a[100] = true
+a[true] = false
+assert(a.b == "huh?")
+assert(a["a"] == 10)
+assert(a[100] == true)
+assert(a[true] == false)
+a.a = nil # Remove key from Thing
+
+let b = { 
+  .a = "Hello world!",
+  ["b"] = "Hola Mundo!",
+  [10] = "Hallo Welt!",
+  [true] = fun [x] x*x # Values can also be functions
+}
+assert(b.a == "Hello world!")
+assert(b.b == "Hola Mundo!")
+assert(b[10] == "Hallo Welt!")
+assert(b[true](10) == 100)
+
+# If a key is not supplied, it will get the next available integer key, starting
+# from 0
+let c = { "apples", 123, false } 
+assert(c[0] == "apples")
+assert(c[1] == 123)
+assert(c[2] == false)
+
+# If a property does not exist on a Thing, it will look up '__get' on its
+# associated Meta-Thing
+let d = { .on_orig = "other" }
+let e = { .on_meta = "thing" }
+setmeta(d, e)
+assert(getmeta(d) == e)
+# If it does not exist, it will simply return nil
+assert(d.on_meta == nil)
+# If it is a table, it will look up the key on that table
+e.__get = e
+assert(d.on_meta == "thing")
+# If it is a procedure, it will call the procedure with original Thing and key
+e.__get = fun [thing, key] thing.on_orig
+assert(d.on_meta == "other")
+# Otherwise, it will return nil
+e.__get = "nope"
+assert(d.on_meta == nil)
+
+# Often, you may want to write a procedure that modifies things.
+# You may be tempted to write something like this:
+let f = { .money = 0 }
+let add_money = fun [thing, amount] thing.money = thing.money + amount
+add_money(f, 123)
+assert(f.money == 123)
+# This is a valid approach, very C-style. If you want to associate the functions
+# with the Things, you may be tempted to put the procedure *inside* the thing.
+let g = { 
+  .money = 0, 
+  .add_money =  fun [self, amt] self.money = self.money + amt 
+}
+g.add_money(g, 31415)
+assert(g.money == 31415)
+# This is basically object-oriented programming via prototypes. This is such a
+# common pattern that you can use a special colon syntax to accomplish the same
+# result
+g:add_money(51413)
+assert(g.money == (31415 + 51413))
+
+# It also can get somewhat confusing if you are not careful...
+let h = {
+  .a = 4,
+  .f = fun [self] self.a,
+  .g = fun [self] self:f()
+}
+assert(h:g() == 4)

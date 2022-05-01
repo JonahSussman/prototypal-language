@@ -1,0 +1,211 @@
+#######################################
+#### 1. Expressions and data types ####
+#######################################
+
+# Comments start with a '#' symbol
+# Everything in LoT is an expression
+
+print("Hello, world!") # Returns nil
+print("Hello") print("World") # Can have multiple expressions per line
+print("A"); print("B"); print("C") # Optionally put ';' after expressions for clarity
+
+# Variables are dynamically typed
+let dynamic = 4
+dynamic = "Happy birthday!" # Valid
+
+# There are 10 data types in LoT
+                         # 1. Symbols, like 'x', 'variable_name', ...
+let num   = 42           # 2. Numbers, IEEE double precision float
+let str   = "Hey y'all!" # 3. String, immutable
+let bool  = true         # 4. Booleans, 'true' or 'false'
+str = nil                # 5. nil. Thanks to smart pointers, will free memory
+let l = [1, 2, 3]        # 6. Lists. WARNING, these do NOT behave like you think.
+                         #    If you want something more traditional, use Things.
+let prim = __add         # 7. Primitives, built-in functions like __mul, __while, etc...
+let fact = fun [n]       # 8. Procedures, user-defined functions
+  if n <= 1 then 1 else n * fact(n-1) end
+let call1 = __mul(3, 4)  # 9. Calls, which consist of a Primitive or Procedure 
+let call2 = fact(3)      #    and a list of expressions to use as args
+let thing = {            # 10. Things, which have fields. Fields have keys and values
+  .x = 1,                #    Keys and values can be any expression.
+  ["y"] = "happy b-day!",
+  [123] = true,          # Trailing comma allowed
+}
+thing.y                  # Two ways to access properties
+thing["x"]               # Symbols are converted to string keys
+
+# You can convert to Booleans, Strings, and Numbers by using their respective
+# functions. If the conversion fails, it returns nil.
+
+let str_to_num  = Number("123")   # 123
+let num_to_bool = Boolean(123)    # true
+let bool_to_str = String(true)    # "true"
+let uh_oh_num   = Number("What?") # nil
+
+# You can inspect the type of an expression by using the type primitive. It
+# returns a string with the type.
+println(type("123")) # "STRING"
+println(type(123))   # "NUMBER"
+println(__add)       # "PRIMITIVE"
+
+##########################################
+#### 2. Infix and Unary Special Forms ####
+##########################################
+
+# Special forms are inherent to the grammar of LoT, but get converted to Calls
+# to primitives
+
+# "Standard" math functions are considered special forms
+80+90    # ~> __add(80, 90)
+16-10    # ~> __sub(16, 10)
+31*40    # ~> __mul(31, 40)
+48/64    # ~> __div(48, 64)
+-7       # ~> __neg(7)
+mod(9,5) # ~> mod(9, 5)
+10>20    # ~> __gt(10, 20)
+10<20    # ~> __lt(10, 20)
+10>=20   # ~> __geq(10, 20)
+10<=20   # ~> __leq(10, 20)
+10==20   # ~> __eq(10, 20)
+10!=20   # ~> __neq(10, 20)
+
+# As well as boolean logic
+true and false # ~> __and(true, false)
+true or false  # ~> __or(true, false)
+true == false  # ~> __eq(true, false)
+true != false  # ~> __neq(true, false)
+
+# You can check the truthy-ness of a value by using 'Boolean'. As a general rule,
+# the only things that are false are 0, nil, and false itself.
+Boolean(0)  # false
+Boolean("") # true
+
+#######################################
+#### 3. Control Flow Special Forms ####
+#######################################
+
+# A do expression will execute a series of expressions, in order, and return the
+# last expression evaluated
+let cond = do 100 200 300 400 true end # cond <- true
+
+# An if expression works how you would think. Each then-end, then-elif, 
+# then-else, and then-end pair works like a do block 
+if cond then 
+  println("Yay!") 
+elif !cond then 
+  println("Yoo!")
+else
+  println("Huh?!")
+end
+
+if !cond then "Something" end # -> nil
+
+# A while expression will execute do block while the condition is true
+let bottles = 5
+while bottles > 0 do
+  let plural = if bottles == 1 then "bottle" else "bottles" end
+  println("* ", bottles, " ", plural, " of milk on the wall.")
+  println("  ", bottles, " ", plural, " of milk!.")
+  println("  Take one down, pass it around!")
+  bottles = bottles - 1
+  plural = if bottles == 1 then "bottle" else "bottles" end
+  let count = if bottles == 0 then "No more" else bottles end
+  println("  ", count, " ", plural, " of milk on the wall!")
+  println();
+end
+
+# Fun expressions return a user-defined procedure. The list following 'fun'
+# must contain only symbols. After the list, a single expression follows.
+let double = fun [number] 2*number
+println(double(2))
+
+# In order to execute multiple statements within a procedure, a do block often
+# follows. Additionally, since functions are just another data type, you can 
+# declare closures inside.
+let fib = fun [n] do
+  let fib_help = fun [a, b, n]
+    if n > 0 then fib_help(b, a+b, n-1) else a end
+  return fib_help(0, 1, n)
+end
+
+println("fib(20) is ", fib(20)) # -> 6765
+
+###################################
+#### 4. Things and Meta-Things ####
+###################################
+
+# The namesake of LoT is the Thing. A thing can be thought of as a map of keys 
+# to values. There are a couple of different ways to associate the keys with
+# values
+let thing1  = {}  # Thing declaration
+thing1.x    = 10 # Dot notation. The symbol gets transformed into a string
+thing1["x"] = 10 # Bracket notation. Functionally the same as above.
+let thing2 = {
+  .apples = "yummy",   # You can initialize Things inside the curly braces 
+  .cherries = "yummy",
+  ["pears"] = "gross"
+}
+
+# Every value not supplied a key will automatically get a number key, starting
+# at 0 and increasing from there
+let thing3 = { "in", "order", "thing" }
+println(thing3[0] == "in")
+
+# Declaring a procedure on an object is easy
+thing2.spawn_apple = fun [] "apple"
+# Calling is easy as well
+println(thing2.spawn_apple())
+
+# Since you can pass anything to a procedure, you can even pass the Thing itself
+thing2.is_yummy = fun [self, food] self[food] == "yummy"
+thing2.is_yummy(thing2, "pears")
+# This leads to a form of OOP. Since this is such a common idiom, there is a
+# shorthand notation. Everything to the left of ':' is evaluated. Then the 
+# procedure is obtained from it and called, with the Thing passed as the first
+# parameter.
+thing2:is_yummy("pears")
+
+# Things also have meta-things. You can set a Meta-Thing like so:
+let superthing = { }
+let subthing = { .a = "A" }   # These two lines could also be shortened to just
+setmeta(subthing, superthing) # 'let subthing = setmeta({.a = "A" }, superthing)'
+println(getmeta(subthing))    # Prints '{ }'
+
+# If you access a key on a Thing that does not exist, it will look up '__get' on
+# on the metatable. If it does not exist, it returns nil. If it is a Thing, it
+# will look up the property on that thing. If it is a procedure, it will call
+# it with the arguments the original thing and the key you are looking up
+superthing.__get = fun [thing, key] println("No key '", key, "' in ", thing)
+subthing.a
+subthing.invalid # Prints "No key 'invalid' in { }"
+
+# This leads to some interesting prototypal inheritance
+let Account = {
+  .__get = fun [thing, key] Account[key],
+  .new = fun [self, balance]
+    setmeta({ .balance = balance }, self),
+  .withdraw = fun [self, amount]
+    self.balance = self.balance - amount,
+}
+
+let acc = Account:new(1000)
+acc:withdraw(123)
+println(acc.balance)
+
+# Here is another example
+let Dog = {}
+Dog.new = fun [self] do
+  let o = { .sound = "Woof!" }
+  self.__get = self
+  setmeta(o, self)
+end
+Dog.speak = fun [self] println(self.sound)
+
+let doggo = Dog:new()
+doggo:speak() # Prints 'Woof!'
+
+let AnnoyingDog = Dog:new()
+AnnoyingDog.speak = fun [self] println("WOOF WOOF WOOF!")
+
+let fido = AnnoyingDog:new()
+fido:speak() # Prints 'WOOF WOOF WOOF!'

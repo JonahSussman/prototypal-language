@@ -36,14 +36,16 @@ let d = { .on_orig = "other" }
 let e = { .on_meta = "thing" }
 setmeta(d, e)
 assert(getmeta(d) == e)
-# If it does not exist, it will simply return nil
-assert(d.on_meta == nil)
+assert(d.on_meta == nil) # If it does not exist, it will return nil
+
 # If it is a table, it will look up the key on that table
-e.__get = e
+e.__get = e 
 assert(d.on_meta == "thing")
+
 # If it is a procedure, it will call the procedure with original Thing and key
 e.__get = fun [thing, key] thing.on_orig
 assert(d.on_meta == "other")
+
 # Otherwise, it will return nil
 e.__get = "nope"
 assert(d.on_meta == nil)
@@ -54,6 +56,7 @@ let f = { .money = 0 }
 let add_money = fun [thing, amount] thing.money = thing.money + amount
 add_money(f, 123)
 assert(f.money == 123)
+
 # This is a valid approach, very C-style. If you want to associate the functions
 # with the Things, you may be tempted to put the procedure *inside* the thing.
 let g = { 
@@ -62,6 +65,7 @@ let g = {
 }
 g.add_money(g, 31415)
 assert(g.money == 31415)
+
 # This is basically object-oriented programming via prototypes. This is such a
 # common pattern that you can use a special colon syntax to accomplish the same
 # result

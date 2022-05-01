@@ -28,18 +28,23 @@ CS 503
   - [3.2 Semi-trivial Types (Nil, Symbol)](#32-semi-trivial-types-nil-symbol)
   - [3.3 Non-trivial Types (List, Thing, Call, Primitive, Procedure)](#33-non-trivial-types-list-thing-call-primitive-procedure)
 - [4. Primitives](#4-primitives)
-  - [IO](#io)
-  - [Types](#types)
-  - [Arithmetic](#arithmetic)
-  - [Comparison](#comparison)
-  - [Logic](#logic)
-  - [Ordering](#ordering)
-  - [Control Flow](#control-flow)
-  - [Procedures](#procedures)
-  - [Variables](#variables)
-  - [Thing Modification](#thing-modification)
-- [X. Examples](#x-examples)
-- [X. Grammar](#x-grammar)
+  - [4.1 IO](#41-io)
+  - [4.2 Types](#42-types)
+  - [4.3 Arithmetic](#43-arithmetic)
+  - [4.4 Comparison](#44-comparison)
+  - [4.5 Logic](#45-logic)
+  - [4.6 Ordering](#46-ordering)
+  - [4.7 Control Flow](#47-control-flow)
+  - [4.8 Procedures](#48-procedures)
+  - [4.9 Variables](#49-variables)
+  - [4.10 Thing Modification](#410-thing-modification)
+- [5. Examples](#5-examples)
+  - [5.1 Bottles of Milk](#51-bottles-of-milk)
+  - [5.2 Higher-Lower Guessing Game](#52-higher-lower-guessing-game)
+  - [5.3 Tail-call-optimization](#53-tail-call-optimization)
+  - [5.4 Vector](#54-vector)
+  - [5.5 Tree Traversal](#55-tree-traversal)
+- [6. Grammar](#6-grammar)
 
 ## 1. Rationale
 
@@ -52,6 +57,8 @@ It's often said that limitation breeds creativity, but why should we as software
 Enter *Language o' Things*, or LoT. LoT aims to be a highly extensible, multi-paradigm language that doesn't box you in. It's small, in order to get out of your way, but highly-expressive. 
 
 If you want to write in a functional style, you can! Functions are first-class. If you want to write in a data-oriented style, you can! Most data types are passed via reference. If you want to write in an object-oriented-style, you can! Things have methods which you can implicitly pass itself to, and Meta-Things act like superclasses.
+
+The programmer should feel free to choose the tool that fits the job. LoT provides an environment to create and use these tools freely.
 
 ## 2. Crash Course: LoT
 
@@ -129,7 +136,7 @@ I will use the following syntax to describe the primitives:
 - `->` means `returns`
 - `...` means the primitive supports an arbitrary number of arguments
 
-### IO
+### 4.1 IO
 
 <!-- print, println, input, gettime -->
 ```lua
@@ -147,7 +154,7 @@ gettime() -> num
   num :: The current Unix time
 ```
 
-### Types
+### 4.2 Types
 
 <!-- Boolean, Number, String, __thing, __list, type -->
 ```lua
@@ -177,7 +184,7 @@ type(expr) -> str
   str  :: "Symbol", "String", "Number", etc...
 ```
 
-### Arithmetic
+### 4.3 Arithmetic
 
 <!-- __add, __sub, __mul, __div, __neg, mod -->
 ```lua
@@ -211,39 +218,189 @@ mod(x, y) -> num
   num :: The negation of x
 ```
 
-### Comparison
+### 4.4 Comparison
 
 <!-- __eq, __neq -->
+```lua
+x == y ~> __eq(x, y) -> bool
+  x    :: The first expression
+  y    :: The second expression
+  bool :: Returns true if the objects are equal (by value for trivial), otherwise false.
 
-### Logic
+x != y ~> __neq(x, y) -> bool
+  x    :: The first expression
+  y    :: The second expression
+  bool :: Returns false if the objects are equal (by value for trivial), otherwise true.
+```
+
+### 4.5 Logic
 
 <!-- __not, __and, __or -->
+```lua
+!x ~> __not(x) -> bool
+  x    :: The expression to evaluate
+  bool :: The opposite truthy value of x
 
-### Ordering
+x and y ~> __and(x, y) -> bool
+  x    :: The first expression
+  y    :: The second expression
+  bool :: true if x and y are truthy, otherwise false
+
+x or y ~> __or(x, y) -> bool
+  x    :: The first expression
+  y    :: The second expression
+  bool :: true if x or y are truthy, otherwise false
+```
+
+### 4.6 Ordering
 
 <!-- __gt, __geq, __lt, __leq -->
+```lua
+x > y ~> __gt(x, y) -> bool
+  x    :: The first expression
+  y    :: The second expression
+  bool :: true if x > y, otherwise false
 
-### Control Flow
+x >= y ~> __geq(x, y) -> bool
+  x    :: The first expression
+  y    :: The second expression
+  bool :: true if x >= y, otherwise false
+
+x < y ~> __lt(x, y) -> bool
+  x    :: The first expression
+  y    :: The second expression
+  bool :: true if x < y, otherwise false
+
+x <= y ~> __leq(x, y) -> bool
+  x    :: The first expression
+  y    :: The second expression
+  bool :: true if x <= y, otherwise false
+```
+
+### 4.7 Control Flow
 
 <!-- __do, __if, __while -->
+```lua
+do expr ... end ~> __do(expr, ...) -> res
+  expr :: The expressions to evaluate, in order
+  res  :: The last expression, evaluated
 
-### Procedures
+if a then e ( elif b then e )* ( else e )? end ~> __if(a, e, ...) -> res
+  a, b, c :: The conditions
+  e       :: The expressions to evaluate
+  res     :: The last expression evaluated
+
+while cond do expr ... end ~> while(cond, expr, ...) -> res
+  cond :: The condition of the loop
+  expr :: The expressions to evaluate
+  res  :: The last expression, evaluated. If none, then nil
+```
+
+### 4.8 Procedures
 
 <!-- __fun, __return -->
+```lua
+fun [s, ...] expr ~> __fun(list, expr) -> res
+  s    :: The symbols for the parameters
+  list :: The list of parameters
+  expr :: The expression representing the procedure
+  res  :: The result of the procedure 
 
-### Variables
+return expr ~> __return(expr) -> expr
+  expr :: The expression to return
+```
 
-<!-- __let, __assign -->
+### 4.9 Variables
 
-### Thing Modification
+<!-- __let, __assign -->  
+```lua
+let sym = expr ~> __let(sym, expr) -> expr
+  sym  :: The symbol to set
+  expr :: The expr to set the symbol to
+
+sym = expr ~> __assign(sym, expr) -> expr
+  sym  :: The symbol to set
+  expr :: The expr to set the symbol to
+```
+
+### 4.10 Thing Modification
 
 <!-- __get, __set, __selfcall, getmeta, setmeta -->
+```lua
+thing.sym   ~> __get(thing, sym) -> res
+thing[expr] ~> __get(thing, expr) -> res
+  thing :: The thing to get values from
+  sym   :: The symbol to use as a key
+  expr  :: The expression to use as a key
+  res   :: The value if found when accessing, otherwise nil
 
-## X. Examples
+thing.sym   = val ~> __set(thing, sym, val) -> val
+thing[expr] = val ~> __set(thing, expr, val) -> val
+  thing :: The thing to get values from
+  sym   :: The symbol to use as a key
+  expr  :: The expression to use as a key
+  val   :: The value to set
 
-## X. Grammar
+thing:proc(args, ...) ~> __selfcall(thing, proc, args) -> res
+  thing :: The thing to access
+  proc  :: The procedure to call
+  args  :: The argument to the procedure
+  res   :: The result of the procedure
+  
+getmeta(thing) -> meta
+  thing :: The thing to access
+  meta  :: The Meta-Thing of thing if exists, nil otherwise
 
-The following is the grammar of LoT, in roughly a EBNF-style form
+setmeta(thing, meta) -> thing
+  thing :: The thing to set the Meta-Thing for
+  meta  :: The metathing itself
+```
+
+## 5. Examples
+
+### 5.1 Bottles of Milk
+
+Here's a classic program, bottles of milk! 
+
+```lua
+#include "examples/5_1_bottles_of_milk.lot"
+```
+
+### 5.2 Higher-Lower Guessing Game
+
+Here's an example of the classic "higher or lower" guessing game
+
+```lua
+#include "examples/5_2_hi_lo.lot"
+```
+
+### 5.3 Tail-call-optimization
+
+Here's an example of tail-call optimization
+
+```lua
+#include "examples/5_3_tail_call.lot"
+```
+
+### 5.4 Vector
+
+Here's an implementation of a c++ style vector
+
+```lua
+#include "examples/5_4_vector.lot"
+```
+
+### 5.5 Tree Traversal
+
+Here's an example of different types of tree traversals
+
+```lua
+#include "examples/5_5_dfs.lot"
+```
+
+## 6. Grammar
+
+The following is the grammar of LoT, in an EBNF-style form
 
 ```bnf
 #include "presentation/grammar.bnf"

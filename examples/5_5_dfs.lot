@@ -1,0 +1,40 @@
+let Node = {}
+Node.new = fun [self, value, left, right] do
+  let o = { .value = value, .left = left, .right = right }
+  self.__get = self
+  setmeta(o, self)
+end
+Node.leaf = fun [self, value] self:new(value, nil, nil)
+
+let tree = Node:new(
+  "A",
+  Node:new(
+    "B", 
+    Node:new("C", Node:leaf("D"), Node:leaf("E")),
+    Node:new("F", Node:leaf("G"), Node:leaf("H"))
+  ), 
+  Node:new(
+    "I", 
+    Node:new("J", Node:leaf("K"), Node:leaf("L")),
+    Node:new("M", Node:leaf("N"), Node:leaf("O"))
+  )
+)
+
+let preorder = fun [node]
+  if node != nil then
+    print(node.value, " ") preorder(node.left) preorder(node.right)
+  end
+
+let inorder = fun [node]
+  if node != nil then
+    inorder(node.left) print(node.value, " ") inorder(node.right)
+  end
+
+let postorder = fun [node]
+  if node != nil then
+    postorder(node.left) postorder(node.right) print(node.value, " ")
+  end
+
+print("preorder  ") preorder(tree)  print("\n")
+print("inorder   ") inorder(tree)   print("\n")
+print("postorder ") postorder(tree) print("\n")

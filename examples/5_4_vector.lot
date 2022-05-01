@@ -1,0 +1,52 @@
+let Array = {
+  .new = fun [self] do
+    let o = { .size = 0, .capacity = 1 }
+    self.__get = self
+    setmeta(o, self)
+  end,
+  .push_back = fun [self, item] do
+    self[self.size] = item
+    self.size = self.size + 1
+    if self.size > self.capacity then 
+      self.capacity = self.capacity * 2
+    end
+    return item
+  end,
+  .pop_back = fun [self] do
+    self.size = self.size - 1
+    let ret = self[self.size]
+    self[self.size] = nil
+    if self.size * 4 < self.capacity then
+      self.capacity = self.capacity / 2
+    end
+    return ret
+  end,
+  .at = fun [self, idx] do
+    if (type(idx) != "Number") or (idx < 0) or (idx >= self.size) then
+      nil
+    else
+      self[idx]
+    end
+  end,
+  .print = fun [self] do
+    print("[")
+    let i = 0
+    while i < self.size do
+      print(self:at(i))
+      if i < self.size - 1 then print(", ") end
+      i = i + 1
+    end
+    println("]")
+  end,
+}
+
+
+let arr = Array:new()
+
+arr:push_back("first")  arr:print()
+arr:push_back("second") arr:print()
+arr:push_back("third")  arr:print()
+
+println(arr:pop_back()) arr:print()
+println(arr:pop_back()) arr:print()
+println(arr:pop_back()) arr:print()

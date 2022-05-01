@@ -6,7 +6,7 @@ There are two ways to run the interpreter.
 
 The first way is through the REPL. Simply execute `./lot` to bring it up.
 
-The second way is to run a file. For instance, if you had a file named `examples/0_test_cases.lot`, then in order to run it you would run `./lot 0_test_cases.lot`.
+The second way is to run a file. For instance, if you had a file named `examples/file.lot`, then in order to run it you would run `./lot examples/file.lot`.
 
 ## Compiling the interpreter
 
@@ -20,4 +20,6 @@ The documentation is in `presentation/presentation.html`. You will find everythi
 
 `lot.cpp` contains the source code for the interpreter.
 
-`examples` contains the raw example code present in the presentation.
+`examples/` contains the raw example code in the presentation.
+
+`run_testcases.sh` will run the test cases in `examples`. It simply calls `./lot examples/<filename>` over a list of filenames that contain test cases.

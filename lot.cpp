@@ -4,59 +4,133 @@
 #include <bits/stdc++.h>
 using namespace std;
 
+// I know this file is quite long. Therefore, I've demarcated the different
+// sections of the document with section headers. Simply CTRL+F for
+// "--- <SECTION NAME> ---" and you'll jump straight to it.
+
+// --- TABLE OF CONTENTS ---
+// - EXPRESSION DEFINITION
+//   - EXPRESSION OPERATORS
+// - ENVIRONMENT DEFINITION
+// - TOKENIZATION SECTION
+// - PARSING SECTION
+// - EVALUATION SECTION
+// - STANDARD ENVIRONMENT
+//   - IO
+//   - TYPES
+//   - ARITHMETIC
+//   - COMPARISON
+//   - LOGIC
+//   - ORDERING
+//   - CONTROL FLOW
+//   - PROCEDURES
+//   - VARIABLES
+//   - THING MODIFICATIONS
+// - MAIN FUNCTION
+
+
+// Forward declarations
 struct Exp;
 struct Env;
 struct Token;
 
-template <typename T>
-using Ptr = shared_ptr<T>;
-using Pexp = Ptr<Exp>;
-using Penv = Ptr<Env>;
-
+// Generalized throwable error
 class Err : public runtime_error {
 public:
   Err(int line, string msg);
   Err(Token tok, string message);
 };
 
-enum ExpType {
-  SYMBOL, // "trivially comparable"
-  STRING, NUMBER, BOOLEAN, // Trivial
-
-  // Containers
-  LIST,  
-  // ^ Comparable via values
-  // v Comparable via references
-  THING, 
-
-  CALL,
-  PRIMITIVE, PROCEDURE,
-  SPECIAL,
-};
-
+// Hasher class used in order to hash Exps
 struct ExpHash {
   std::size_t operator()(Exp const& e) const;
+};
+
+template <typename T>      // Using smart pointers to facilitate memory mgmt
+using Ptr = shared_ptr<T>;
+using Pexp = Ptr<Exp>;
+using Penv = Ptr<Env>;
+
+// --- EXPRESSION DEFINITION ---
+
+// Everything in this interpreter is an expression. This is implemented as an 
+// Exp struct. This struct contains a single, anonymous union that constains all
+// the different data an expression could hold. It also contains an ExpType type
+// field that tells which of the data has been selected - a "tagged union".
+
+// This way of implementation allows us to pass the expressions of various types
+// in C++ methods, while also following C++'s strong typing, by simply passing a
+// Pexp to the method.
+
+// There are a couple of different things an Exp can be:
+// - NUMBER :: A number (IEEE double precision float)
+// - STRING :: A string
+// - BOOLEAN :: A boolean
+// - SYMBOL :: A symbol that can be looked up in an environment
+// - LIST :: A list of Exps (for internal use mainly)
+// - THING :: A Thing, which is a map of keys and values
+// - CALL :: A call to a primitive or procedure with a list of args
+// - PROCEDURE :: A user-defined function
+// - PRIMITIVE :: A built-in function (__add, __mul, ...)
+// - SPECIAL :: A special. Currently only used for nil
+
+enum ExpType {
+  SYMBOL, STRING, NUMBER, BOOLEAN, 
+  LIST, THING, CALL, PRIMITIVE, PROCEDURE, SPECIAL
 };
 
 struct Exp {
   const ExpType type;
 
   union {
-    string sym;
-    string str;
+    // NUMBER
+    //   - num :: The actual number
     double num;
+
+    // STRING
+    //   - str :: The actual string
+    string str;
+
+    // BOOLEAN
+    //   - truth :: The actual booelan value
     bool truth;
 
+    // SYMBOL
+    //   - sym :: The string value of the symbol
+    string sym;
+
+    // LIST
+    //   - list :: A vector of Pexp
     vector<Pexp> list;
 
-    struct { Pexp name; vector<Pexp> args; } call;
+    // THING
+    //   - table :: An unordered map mapping Exps to Pexps
+    //   - meta :: The meta-thing of this thing
+    struct { Ptr<unordered_map<Exp, Pexp, ExpHash>> table; Pexp meta; } thing;
 
-    struct { function<Pexp(Penv, vector<Pexp>)> fun; bool tco; } prim;
+    // CALL
+    //   - name :: The procedure or primitive to call
+    //   - args :: The args to call it with
+    struct { Pexp name; vector<Pexp> args; } call;
+    
+    // PROCEDURE
+    //   - params :: The params of the procedure
+    //   - body :: The body of the procedure to execute
+    //   - env :: The environemnt of the procedure
     struct { vector<Pexp> params, body; Penv env; } proc;
 
-    struct { Ptr<unordered_map<Exp, Pexp, ExpHash>> table; Pexp meta; } thing;
+    // PRIMITIVE
+    //   - fun :: The C++ function to execute
+    //   - tco :: Whether the primitive is tail-call-optimizable or not
+    struct { function<Pexp(Penv, vector<Pexp>)> fun; bool tco; } prim;
+
+    // SPECIAL
+    //   No additional data, only the address of the actual Exp matters
   };
 
+  // Constructor for Exp. Because we use a tagged union, C++ does not know which
+  // memory is what automatically. Therefore, we need to initialize each field 
+  // separately with the placement new operator.
   Exp(ExpType type) : type(type) {
     switch(type) {
       case SYMBOL:
@@ -96,6 +170,7 @@ struct Exp {
     }
   }
 
+  // Copy constructor
   Exp(const Exp& other) : Exp(other.type) {
     switch(type) {
       case SYMBOL:
@@ -135,6 +210,8 @@ struct Exp {
     }
   }
 
+  // Because we are using tagged unions, C++ *also* doesn't know which 
+  // destructor to call. Therefore, we call them explicitly.
   ~Exp() {
     switch(type) {
       case SYMBOL:
@@ -170,6 +247,14 @@ struct Exp {
         break;
     }
   }
+
+  // Each Exp has a certain "truthiness" assigned to it. Better to have it 
+  // defined in one place, on the class rather than smattered about in the 
+  // standard environment functions.
+  explicit operator bool() const;
+
+  // A bunch of static "pseudo-constructors" to return a new pointer to an Exp 
+  // of a certain type.
 
   static Pexp Symbol(string sym) {
     auto e = make_shared<Exp>(SYMBOL);
@@ -233,12 +318,15 @@ struct Exp {
   static Pexp Special() {
     return make_shared<Exp>(SPECIAL);
   }
-
-  explicit operator bool() const;
 };
 
+// Special constant nil, the abscense of data
 Pexp nil = Exp::Special();
 
+// --- EXPRESSION OPERATORS ---
+
+// Equality operator. Trivial data types are compared by value. The rest are 
+// compared by reference.
 bool operator==(const Exp& l, const Exp& r) {
   if (l.type != r.type) return false;
   switch(l.type) {
@@ -255,76 +343,27 @@ bool operator==(const Exp& l, const Exp& r) {
   return &l == &r;
 }
 
-bool operator!=(const Exp& l, const Exp& r) {
-  return !(l == r);
-}
+// Simple non-equality operator
+bool operator!=(const Exp& l, const Exp& r) { return !(l == r); }
 
-int typesize(ExpType type) {
-  switch(type) {
-      case SYMBOL: return sizeof(string);
-      case STRING: return sizeof(string);
-      case NUMBER: return sizeof(double);
-      case BOOLEAN: return sizeof(bool);
-      case LIST: return sizeof(vector<Pexp>);
-      case CALL: return sizeof(Pexp) + sizeof(vector<Pexp>);
-      case PRIMITIVE: 
-        return sizeof(function<Pexp(Penv, vector<Pexp>)>) + sizeof(bool);
-      case PROCEDURE:
-        return 2*sizeof(vector<Pexp>) + sizeof(Penv);
-      case THING:
-        return sizeof(Ptr<unordered_map<Exp, Pexp, ExpHash>>);
-      default: return 0;
-  }
-}
-
-bool operator<(const Exp& l, const Exp& r) {
-  if (l.type != r.type) throw Err(-1, "Can only order-compare same type.");
-  // return typesize(l.type) < typesize(r.type);
-  switch(l.type) {
-    case SYMBOL:  return l.sym < r.sym;
-    case STRING:  return l.str < r.str;
-    case NUMBER:  return l.num < r.num;
-    case BOOLEAN: return l.truth < r.truth;
-  }
+// Tidy macro to define ordering operators
+#define EXP_CMP(OP)                                                            \
+  if (l.type != r.type) throw Err(-1, "Can only order-compare same type.");    \
+  switch(l.type) {                                                             \
+    case SYMBOL:  return OP <string>{}(l.sym, r.sym);                          \
+    case STRING:  return OP <string>{}(l.str, r.str);                          \
+    case NUMBER:  return OP <double>{}(l.num, r.num);                          \
+    case BOOLEAN: return OP <bool>{}(l.truth, r.truth);                        \
+  }                                                                            \
   throw Err(-1, "Cannot order-compare non-well-ordered types!");
-}
 
-bool operator>(const Exp& l, const Exp& r) {
-  if (l.type != r.type) throw Err(-1, "Can only order-compare same type.");
-  // return typesize(l.type) > typesize(r.type);
-  switch(l.type) {
-    case SYMBOL:  return l.sym > r.sym;
-    case STRING:  return l.str > r.str;
-    case NUMBER:  return l.num > r.num;
-    case BOOLEAN: return l.truth > r.truth;
-  }
-  throw Err(-1, "Cannot order-compare non-well-ordered types!");
-}
+bool operator< (const Exp& l, const Exp& r) { EXP_CMP(less); }
+bool operator<=(const Exp& l, const Exp& r) { EXP_CMP(less_equal); }
+bool operator> (const Exp& l, const Exp& r) { EXP_CMP(greater); }
+bool operator>=(const Exp& l, const Exp& r) { EXP_CMP(greater_equal); }
 
-bool operator<=(const Exp& l, const Exp& r) {
-  if (l.type != r.type) throw Err(-1, "Can only order-compare same type.");
-  // return typesize(l.type) <= typesize(r.type);
-  switch(l.type) {
-    case SYMBOL:  return l.sym <= r.sym;
-    case STRING:  return l.str <= r.str;
-    case NUMBER:  return l.num <= r.num;
-    case BOOLEAN: return l.truth <= r.truth;
-  }
-  throw Err(-1, "Cannot order-compare non-well-ordered types!");
-}
-
-bool operator>=(const Exp& l, const Exp& r) {
-  if (l.type != r.type) throw Err(-1, "Can only order-compare same type.");
-  // return typesize(l.type) >= typesize(r.type);
-  switch(l.type) {
-    case SYMBOL:  return l.sym >= r.sym;
-    case STRING:  return l.str >= r.str;
-    case NUMBER:  return l.num >= r.num;
-    case BOOLEAN: return l.truth >= r.truth;
-  }
-  throw Err(-1, "Cannot order-compare non-well-ordered types!");
-}
-
+// Booleans return their value. Numbers are false if they equal zero. Nil is 
+// always false. Everything else is true.
 Exp::operator bool() const {
   switch(this->type) {
     case NUMBER:  return this->num != 0.0;
@@ -335,75 +374,20 @@ Exp::operator bool() const {
   return true;
 }
 
+// Hash operator for the unordered_map present in Things.
 size_t ExpHash::operator()(Exp const& e) const {
   switch(e.type) {
-    case SYMBOL:  return std::hash<string>{}(e.sym);
-    case STRING:  return std::hash<string>{}(e.str);
-    case NUMBER:  return std::hash<double>{}(e.num);
-    case BOOLEAN: return std::hash<bool>{}(e.truth);
+    case SYMBOL:  return hash<string>{}(e.sym);
+    case STRING:  return hash<string>{}(e.str);
+    case NUMBER:  return hash<double>{}(e.num);
+    case BOOLEAN: return hash<bool>{}(e.truth);
   }
 
   throw Err(-1, "Cannot hash non-trivial types.");
 }
 
-unordered_map<string, Pexp> obmap;
-Pexp intern(string name) {
-  if (obmap.find(name) != obmap.end())
-    return obmap[name];
-
-  auto sym = Exp::Symbol(name);
-  obmap[name] = sym;
-  return sym;
-}
-
-struct Env {
-  unordered_map<Pexp, Pexp> vars;
-  Penv outer;
-
-  /* Constructors */
-  Env(Penv outer) : outer(outer) { }
-  Env(Penv outer, vector<Pexp> vars, vector<Pexp> vals) : outer(outer) {
-    zip(vars, vals);
-  }
-
-  /** 
-   * Zip takes a list of variables and a list of values of the same length and
-   * associates them with each other.
-   */
-  void zip(vector<Pexp> vars, vector<Pexp> vals) {
-    if (vars.size() != vals.size())
-      throw Err(-1, "Env.zip: Number of args does not match params.");
-
-    for (int i = 0; i < vars.size(); i++)
-      let(vars[i], vals[i]);
-  }
-
-  /* Finds the symbol's associated value */
-  Pexp get(Pexp sym) {
-    if (vars.find(sym) == vars.end())
-      return outer ? outer->get(sym) : nullptr;
-
-    return vars[sym];
-  }
-
-  /* Puts the symbol and value in *this* environment */
-  void let(Pexp sym, Pexp exp) { 
-    vars[sym] = exp; 
-  }
-
-  /** 
-   * If the symbol is found in any of the outer environments, it puts the value
-   * in there. Otherwise, it puts a new variable in this environment.
-   */
-  void set(Pexp sym, Pexp exp) {
-    auto e = this;
-    while (e && e->vars.find(sym) == e->vars.end()) 
-      e = e->outer.get();
-    e ? e->vars[sym] = exp : vars[sym] = exp;
-  }
-};
-
-/* Ostream print function. */
+// Ostream print function. Also used for converting an Exp of any type to a 
+// String.
 ostream &operator<<(ostream &os, const Exp& exp) {
   switch (exp.type) {
     case SYMBOL: os << exp.sym; break;
@@ -430,37 +414,87 @@ ostream &operator<<(ostream &os, const Exp& exp) {
     }
     case THING: {
       os << "{ ";
-      // int sz = exp.thing.env->vars.size();
       int sz = exp.thing.table->size();
       int i = 0;
-      // for (auto& p : exp.thing.env->vars) {
       for (auto& p : *(exp.thing.table)) {
-        cout << p.first << " = " << *p.second;
-        if (i < sz - 1) 
-          cout << ",";
-        cout << " ";
-        i++;
+        os << p.first << " = " << *p.second;
+        if (i++ < sz - 1) cout << ", ";
       }
-      os << "}";
+      os << " }";
       break;
     }
     case PRIMITIVE: os << "<primitive: " << &exp << ">"; break;
     case PROCEDURE: os << "<procedure: " << &exp << ">"; break;
-    case SPECIAL:
-      if (&exp == nil.get())
-        os << "<nil>";
-      else
-        os << "<special!>";
-      break;
-    default: 
-      os << "<unknown!>"; 
-      break;
+    case SPECIAL:   os << ((&exp == nil.get()) ? "<nil>" : "<special!>"); break;
+    default:        os << "<unknown!>"; break;
   }
 
   return os;
 }
 
+// --- ENVIRONMENT DEFINITION ---
+
+// Symbols are interned in a global object map so that we can compare only their
+// pointers for equality
+unordered_map<string, Pexp> obmap;
+Pexp intern(string name) {
+  if (obmap.find(name) != obmap.end())
+    return obmap[name];
+
+  auto sym = Exp::Symbol(name);
+  obmap[name] = sym;
+  return sym;
+}
+
+struct Env {
+  unordered_map<Pexp, Pexp> vars;
+  Penv outer;
+
+  // Constructors
+  Env(Penv outer) : outer(outer) { }
+  Env(Penv outer, vector<Pexp> vars, vector<Pexp> vals) : outer(outer) {
+    zip(vars, vals);
+  }
+
+  // Zip takes a list of variables and a list of values of the same length and
+  // associates them with each other.
+  void zip(vector<Pexp> vars, vector<Pexp> vals) {
+    if (vars.size() != vals.size())
+      throw Err(-1, "Env.zip: Number of args does not match params.");
+
+    for (int i = 0; i < vars.size(); i++)
+      let(vars[i], vals[i]);
+  }
+
+  // Finds the symbol's associated value
+  Pexp get(Pexp sym) {
+    if (vars.find(sym) == vars.end())
+      return outer ? outer->get(sym) : nullptr;
+
+    return vars[sym];
+  }
+
+  // Puts the symbol and value in *this* environment
+  void let(Pexp sym, Pexp exp) { 
+    vars[sym] = exp; 
+  }
+
+  // If the symbol is found in any of the outer environments, it puts the value
+  // in there. Otherwise, throw an error.
+  void set(Pexp sym, Pexp exp) {
+    auto e = this;
+    while (e && e->vars.find(sym) == e->vars.end()) 
+      e = e->outer.get();
+    if (!e) throw Err(-1, "Could not find symbol in env!");
+    e->vars[sym] = exp;
+  }
+};
+
+// --- TOKENIZATION SECTION ---
+
+// A bunch of types of tokens. All should be fairly self-explanitory.
 enum TokType {
+  // ()[]{}
   LPAREN, RPAREN, LBRACK, RBRACK, LCURLY, RCURLY,
   COMMA, DOT, MINUS, PLUS, SEMICOLON, SLASH, STAR, COLON,
 
@@ -478,31 +512,24 @@ enum TokType {
 };
 
 struct Token {
-  const TokType type;
-  string lexeme;
-  int line;
+  const TokType type; // Type of token
+  string lexeme;      // The actual string in the source
+  int line;           // The line of the token
 
-  string str;
-  string sym;
-  double num;
+  string str; // String literal
+  string sym; // Symbol literal
+  double num; // Number literal
 
+  // Constructor
   Token(TokType t, string le, int li) : type(t), lexeme(le), line(li) { }
-
-  string to_str() {
-    string s;
-    if (type == STR)
-      s = str;
-    else if (type == SYM)
-      s = sym;
-    else if (type == NUM)
-      s = to_string(num);
-    return to_string(static_cast<std::underlying_type_t<TokType>>(type)) + "|" + lexeme + "|" + s; 
-  }
 };
 
+// Vector of tokens iterator typedef for ease of use
 typedef vector<Token>::iterator tokitr;
 
+// Given a source string, return a list of tokens
 vector<Token> tokenize(string src) {
+  // Keyword map
   static map<string, TokType> keywords = {
     { "and", AND },
     { "do", DO },
@@ -544,6 +571,7 @@ vector<Token> tokenize(string src) {
   };
 
   // Readers
+  // Return the valid escape sequence character
   auto to_escape = [](char ch) {
     switch (ch) {
       case '\'': return '\'';
@@ -556,7 +584,7 @@ vector<Token> tokenize(string src) {
 
     return ch;
   };
-
+  // Return a string token
   static auto read_str = [&]() {
     while (peek() != '\"' && !at_end()) {
       if (peek() == '\n') 
@@ -592,6 +620,7 @@ vector<Token> tokenize(string src) {
       t.str = s;
       add(t);
   };
+  // Return a number token
   static auto read_num = [&]() {
     while (isdigit(peek())) advance();
     if (peek() == '.' && isdigit(peek_next())) advance();
@@ -601,6 +630,7 @@ vector<Token> tokenize(string src) {
     t.num = stod(src.substr(start, curr - start));
     add(t);
   };
+  // Return a symbol token
   static auto read_symbol = [&]() {
     while (isalpha(peek()) || isdigit(peek()) || peek() == '_') advance();
 
@@ -612,6 +642,7 @@ vector<Token> tokenize(string src) {
     add(t);
   };
 
+  // Main loop
   while (!at_end()) {
     start = curr;
     
@@ -657,6 +688,8 @@ vector<Token> tokenize(string src) {
   return tokens;
 }
 
+// --- PARSING SECTION ---
+
 namespace parser {
   // Helper functions
   bool at_end(tokitr& itr) { 
@@ -671,7 +704,6 @@ namespace parser {
   Token consume(tokitr& it, TokType t, string m) { 
     return check(it, t) ? advance(it) : throw Err(*it, m);
   }
-
   void synchronize(tokitr& itr) {
     advance(itr);
     while (!at_end(itr)) {
@@ -685,14 +717,12 @@ namespace parser {
       advance(itr);
     }
   }
-
   bool match(tokitr& itr, TokType t) {
     if (!check(itr, t)) return false;
 
     advance(itr);
     return true;
   }
-
   int multimatch(tokitr& itr, vector<TokType> v) {
     for (int i = 0; i < v.size(); i++) {
       if (check(itr, v[i])) {
@@ -704,20 +734,24 @@ namespace parser {
     return -1;
   }
 
-  // Actual parsing
+  // Main parsing section
+
+  // Forward declaration of expr
   Pexp expr(tokitr& itr);
 
+  // Main parsing function. Given a list of tokens, return a list of Pexp.
   vector<Pexp> parse(vector<Token> tokens) {
     vector<Pexp> exps;
     tokitr itr = tokens.begin();
 
-    while (!at_end(itr)) {
+    while (!at_end(itr))
       exps.push_back(expr(itr));
-    }
 
     return exps;
   }
 
+  // Helper function. Continue to match expressions until one of the provided 
+  // terminators is hit.
   Pexp block(tokitr& itr, vector<TokType> terminators) {
     vector<Pexp> block;
     while (multimatch(itr, terminators) < 0)
@@ -726,12 +760,14 @@ namespace parser {
     return Exp::Call(intern("__do"), block);
   }
 
+  // do_expr function
   Pexp do_expr(tokitr& itr) { 
     auto e = block(itr, { END });
     consume(itr, END, "Expect 'end' after do block.");
     return e;
-   }
+  }
 
+  // while_expr function
   Pexp while_expr(tokitr& itr) { 
     vector<Pexp> args = { expr(itr) };
     consume(itr, DO, "Expect 'do' after while condition.");
@@ -740,6 +776,7 @@ namespace parser {
     return Exp::Call(intern("__while"), args);
   }
 
+  // if_expr function
   Pexp if_expr(tokitr& itr) { 
     vector<Pexp> args = { expr(itr) };
     consume(itr, THEN, "Expect 'then' after if condition.");
@@ -760,6 +797,7 @@ namespace parser {
     return Exp::Call(intern("__if"), args);
   }
 
+  // fun_expr function
   Pexp fun_expr(tokitr& itr) { 
     consume(itr, LBRACK, "Expect '[' for fun parameter list.");
     vector<Pexp> params;
@@ -773,16 +811,19 @@ namespace parser {
     return Exp::Call(intern("__fun"), { Exp::List(params), expr(itr) });
   }
 
+  // let_expr function
   Pexp let_expr(tokitr& itr) { 
     auto e = intern((consume(itr, SYM, "Expect symbol.")).sym);
     consume(itr, EQ, "Expect '=' after identifier.");
     return Exp::Call(intern("__let"), { e, expr(itr) });
   }
 
+  // return_expr function
   Pexp return_expr(tokitr& itr) {
     return Exp::Call(intern("__return"), { expr(itr) });
   }
 
+  // thing_expr function
   Pexp thing_expr(tokitr& itr) { 
     vector<Pexp> fields;
     if (!check(itr, LCURLY)) {
@@ -802,16 +843,18 @@ namespace parser {
         } else if (check(itr, RCURLY)) { // Trailing comma
           break;
         } else {
+          // If no key is provided, it is automatically supplied one with an
+          // integer key
           fields.push_back(Exp::Number(i++));
-          // throw Err(*itr, "Expect field.");
         }
         fields.push_back(expr(itr));
       } while (match(itr, COMMA));
     }
     consume(itr, RCURLY, "Expect '}' after field list.");
     return Exp::Call(intern("__thing"), fields);
-   }
+  }
 
+  // list_expr function
   Pexp list_expr(tokitr& itr) { 
     vector<Pexp> elems;
     if (!check(itr, RBRACK)) {
@@ -823,6 +866,7 @@ namespace parser {
     return Exp::Call(intern("__list"), elems);
   }
 
+  // primary expression function
   Pexp primary(tokitr& itr) {
     if (match(itr, TRUE))   return Exp::Boolean(true);
     if (match(itr, FALSE))  return Exp::Boolean(false);
@@ -841,6 +885,7 @@ namespace parser {
     throw Err(*itr, "Expected expression.");
   }
 
+  // Call exression function
   Pexp call(tokitr& itr) {
     Pexp e = primary(itr);
 
@@ -883,20 +928,23 @@ namespace parser {
     return e;
   }
 
+  // Unary expression function
   Pexp unary(tokitr& itr) {
-    if (match(itr, BANG))  return Exp::Call(intern("__not"),  { unary(itr) });
+    if (match(itr, BANG))  return Exp::Call(intern("__not"), { unary(itr) });
     if (match(itr, MINUS)) return Exp::Call(intern("__neg"), { unary(itr) });
     
     return call(itr);
   }
 
+  // Helper map that maps infix tokens to their respective primitive functions
   map<TokType, string> infix_map = {
     { SLASH, "__div" }, { STAR, "__mul" }, { MINUS, "__sub" }, { PLUS, "__add" },
-    { GREATER, "__gt" }, { GREATER_EQ, "__geq" }, { LESS, "__lt" }, 
-    { LESS_EQ, "__leq" }, { BANG_EQ, "__neq" }, { EQ_EQ, "__eq" }, 
+    { GREATER, "__gt" }, { GREATER_EQ, "__geq" }, { LESS, "__lt" }, { LESS_EQ, "__leq" }, 
+    { BANG_EQ, "__neq" }, { EQ_EQ, "__eq" }, 
     { AND, "__and" }, { OR, "__or" },
   };
 
+  // Helper function to process infix expressions
   Pexp infix(tokitr& itr, function<Pexp(tokitr&)> next, vector<TokType> ts) {
     Pexp e = next(itr);
     int i = multimatch(itr, ts);
@@ -908,6 +956,7 @@ namespace parser {
     return e;
   }
 
+  // Infix expressions like factor, term, comparison, equality, etc...
   Pexp fact(tokitr& itr) { return infix(itr,unary,{ SLASH, STAR }); }
   Pexp term(tokitr& itr) { return infix(itr,fact,{ MINUS, PLUS }); }
   Pexp comp(tokitr& itr) { return infix(itr,term,{ GREATER, GREATER_EQ, LESS, LESS_EQ }); }
@@ -915,6 +964,7 @@ namespace parser {
   Pexp land(tokitr& itr) { return infix(itr,eqty,{ AND }); }
   Pexp lor(tokitr& itr)  { return infix(itr,land,{ OR }); }
   
+  // Assignment expression
   Pexp assignment(tokitr& itr) {
     Pexp e = lor(itr);
     if (match(itr, EQ)) {
@@ -923,6 +973,7 @@ namespace parser {
       if (e->type == SYMBOL) {
         return Exp::Call(intern("__assign"), { e, value });
       } else if (e->type == CALL && e->call.name->sym == "__get") {
+        // If we're trying to assign to a key on a Thing, treat it differently
         return Exp::Call(intern("__set"), { e->call.args[0], e->call.args[1], value });
       }
       throw Err(equals, "Invalid assignment target.");
@@ -930,6 +981,7 @@ namespace parser {
     return e;
   }
 
+  // Main expression function
   Pexp expr(tokitr& itr) {
     Pexp ret;
     if (match(itr, DO))          ret = do_expr(itr);
@@ -946,7 +998,8 @@ namespace parser {
   }
 }
 
-/* --- EVALUATION SECTION --- */
+// --- EVALUATION SECTION ---
+
 Pexp eval(Penv env, Pexp exp);
 
 // Evaluates each element of list, returns last value
@@ -966,15 +1019,18 @@ Pexp eval_through_tco(Penv env, vector<Pexp> list) {
   return list.back();
 }
 
+// Evaluates each element of a list. Returns that list.
 vector<Pexp> eval_list(Penv env, vector<Pexp> list) {
   for (auto& e : list) e = eval(env, e);
 
   return list;
 }
 
+// Main evaluation function. Works like an eval-apply loop
 Pexp eval(Penv env, Pexp exp) {
   while (true) {
     switch(exp->type) {
+      // Self-evaluating expressions
       case NUMBER:
       case STRING:
       case BOOLEAN:
@@ -983,11 +1039,13 @@ Pexp eval(Penv env, Pexp exp) {
       case PROCEDURE:
       case SPECIAL:
         return exp;
+      // We need to look up symbols in the environment
       case SYMBOL: {
         auto bind = env->get(exp);
         if (!bind) throw Err(-1, "eval: Undefined symbol '" + exp->sym + "'.");
         return bind;
       }
+      // Calls apply their arguments to their body
       case CALL: {
         auto fun = eval(env, exp->call.name);
         auto arg = exp->call.args;
@@ -997,13 +1055,15 @@ Pexp eval(Penv env, Pexp exp) {
           throw Err(-1, "eval: Call must be PRIMITIVE or PROCEDURE.");
         }
 
-        // apply
+        // Apply
         if (fun->type == PROCEDURE) {
+          // We use a try-catch block to catch any return values.
           try {
             auto farg = eval_list(env, arg);
             auto fenv = fun->proc.env;
             env = make_shared<Env>(fenv, fun->proc.params, farg);
             exp = eval_through_tco(env, fun->proc.body);
+            // Because of TCO, we need to handle if the last expr is a return
             if (
               exp->type == CALL && 
               exp->call.name->type == SYMBOL && 
@@ -1012,16 +1072,14 @@ Pexp eval(Penv env, Pexp exp) {
               return eval(env, exp->call.args[0]);
             }
           } catch (Pexp ret) {
-            // cout << "returning!" << endl;
             return ret;
           }
-        } else if (fun->prim.tco) { // We know the exp is a primitive
+        // At this point, we know the exp is a primitive
+        } else if (fun->prim.tco) { 
           exp = fun->prim.fun(env, arg);
         } else {
-          auto ret = fun->prim.fun(env, arg);
-          return ret;
+          return fun->prim.fun(env, arg);
         }
-
         break;
       }
       default:
@@ -1057,7 +1115,8 @@ namespace standard {
   //   expr :: The expressions to print, then a single newline
 
   PRIM(println) {
-    for (auto& e : eval_list(env, args)) cout << *e; cout << endl;
+    for (auto& e : eval_list(env, args)) cout << *e; 
+    cout << endl;
     return nil;
   }
 
@@ -1141,9 +1200,7 @@ namespace standard {
   //   expr :: The list of expressions to evaluate
   //   list :: The list of evaluated expressions
 
-  PRIM(__list) {
-    return Exp::List(eval_list(env, args));
-  }
+  PRIM(__list) { return Exp::List(eval_list(env, args)); }
 
   // type(expr) -> str
   //   expr :: The expression to get the type of
@@ -1167,7 +1224,8 @@ namespace standard {
 
   // --- ARITHMETIC ---
 
-  Pexp ifx(Penv e, vector<Pexp> a, string n, function<double(double,double)> op) {
+  // Helper function for infix arithmetic operations
+  Pexp ifx(Penv e,vector<Pexp> a,string n,function<double(double,double)> op) {
     if (a.size() != 2) throw Err(-1, n + ": Requires exactly 2 args.");
     a = eval_list(e, a);
     if (a[0]->type != NUMBER || a[1]->type != NUMBER)
@@ -1175,12 +1233,45 @@ namespace standard {
     return Exp::Number(op(a[0]->num, a[1]->num));
   }
 
-  PRIM(__add) { return ifx(env,args,"__add", std::plus<double>()); }
-  PRIM(__sub) { return ifx(env,args,"__sub", std::minus<double>()); }
-  PRIM(__mul) { return ifx(env,args,"__mul", std::multiplies<double>()); }
-  PRIM(__div) { return ifx(env,args,"__div", std::divides<double>()); }
+  // x + y ~> __add(x, y) -> num
+  //   x   :: The first number
+  //   y   :: The second number
+  //   num :: The result of x + y
+
+  PRIM(__add) { return ifx(env,args,"__add", plus<double>()); }
+
+  // x - y ~> __sub(x, y) -> num
+  //   x   :: The first number
+  //   y   :: The second number
+  //   num :: The result of x - y
+
+  PRIM(__sub) { return ifx(env,args,"__sub", minus<double>()); }
+
+  // x + y ~> __mul(x, y) -> num
+  //   x   :: The first number
+  //   y   :: The second number
+  //   num :: The result of x * y
+
+  PRIM(__mul) { return ifx(env,args,"__mul", multiplies<double>()); }
+
+  // x + y ~> __div(x, y) -> num
+  //   x   :: The first number
+  //   y   :: The second number
+  //   num :: The result of x / y
+
+  PRIM(__div) { return ifx(env,args,"__div", divides<double>()); }
+
+  // mod(x, y) -> num
+  //   x   :: The first number
+  //   y   :: The second number
+  //   num :: The result of x modulo y
+
   PRIM(mod) { return ifx(env,args,"mod", [](auto x,auto y){return fmod(x,y);});}
-  
+
+  // -x ~> __neg(x) -> num
+  //   x   :: The number to negate
+  //   num :: The negation of x
+
   PRIM(__neg) {
     if (args.size() != 1) throw Err(-1, "__neg: Requires exactly 1 arg.");
     args = eval_list(env, args);
@@ -1190,27 +1281,144 @@ namespace standard {
     return Exp::Number(-args[0]->num);
   }
 
+  // --- COMPARISON ---
+
+  // Helper function for infix comparison and ordering operations
+  Pexp cmp(Penv e, vector<Pexp> a, string n, function<bool(Exp&,Exp&)> op) {
+    if (a.size() != 2) throw Err(-1, n + ": Requires exactly 2 args.");
+    a = eval_list(e, a);
+    return Exp::Boolean(op(*(a[0]), *(a[1])));
+  }
+
+  // x == y ~> __eq(x, y) -> bool
+  //   x    :: The first expression
+  //   y    :: The second expression
+  //   bool :: Returns true if the objects are equal (by value for trivial), 
+  //           otherwise false.
+
+  PRIM(__eq) { return cmp(env,args,"__eq", equal_to<Exp&>()); }
+
+  // x != y ~> __neq(x, y) -> bool
+  //   x    :: The first expression
+  //   y    :: The second expression
+  //   bool :: Returns false if the objects are equal (by value for trivial), 
+  //           otherwise true.
+
+  PRIM(__neq){ return cmp(env,args,"__neq",not_equal_to<Exp&>()); }
+
+  // --- LOGIC ---
+
+  // !x ~> __not(x) -> bool
+  //   x    :: The expression to evaluate
+  //   bool :: The opposite truthy value of x
+
   PRIM(__not) {
     if (args.size() != 1) throw Err(-1, "__not: Requires exactly 1 arg.");
     return Exp::Boolean(!(bool)(*eval(env, args[0])));
   }
 
-  PRIM(__let) {
-    if (args.size() != 2) throw Err(-1, "__let: Requires exactly 2 args");
-    if (args[0]->type != SYMBOL) throw Err(-1, "__let: Requires symbol.");
-    auto e = eval(env, args[1]);
-    env->let(args[0], e);
-    return e;
+  // x and y ~> __and(x, y) -> bool
+  //   x    :: The first expression
+  //   y    :: The second expression
+  //   bool :: true if x and y are truthy, otherwise false
+
+  PRIM(__and){
+    if (args.size() != 2) throw Err(-1, "__and: Requires exactly 2 args.");
+    auto x = eval(env, args[0]);
+    if (!(bool)(*x)) return Exp::Boolean(false); // Short circuit evaluation
+    return Exp::Boolean((bool)(*eval(env, args[1])));
   }
 
-  PRIM(__assign) {
-    if (args.size() != 2) throw Err(-1, "__assign: Requires exactly 2 args.");
-    auto e = eval(env, args[1]);
-    env->let(args[0], e);
-    return e;
+  // x or y ~> __or(x, y) -> bool
+  //   x    :: The first expression
+  //   y    :: The second expression
+  //   bool :: true if x or y are truthy, otherwise false
+
+  PRIM(__or) {
+    if (args.size() != 2) throw Err(-1, "__or: Requires exactly 2 args.");
+    auto x = eval(env, args[0]);
+    if ((bool)(*x)) return Exp::Boolean(true); // Short circuit evaluation
+    return Exp::Boolean((bool)(*eval(env, args[1])));
   }
 
-  // will not work raw
+  // --- ORDERING ---
+
+  // x > y ~> __gt(x, y) -> bool
+  //   x    :: The first expression
+  //   y    :: The second expression
+  //   bool :: true if x > y, otherwise false
+
+  PRIM(__gt) { return cmp(env,args,"__gt", greater<Exp&>()); }
+
+  // x >= y ~> __geq(x, y) -> bool
+  //   x    :: The first expression
+  //   y    :: The second expression
+  //   bool :: true if x >= y, otherwise false
+
+  PRIM(__geq){ return cmp(env,args,"__geq",greater_equal<Exp&>()); }
+
+  // x < y ~> __lt(x, y) -> bool
+  //   x    :: The first expression
+  //   y    :: The second expression
+  //   bool :: true if x < y, otherwise false
+
+  PRIM(__lt) { return cmp(env,args,"__lt", less<Exp&>()); }
+
+  // x <= y ~> __leq(x, y) -> bool
+  //   x    :: The first expression
+  //   y    :: The second expression
+  //   bool :: true if x <= y, otherwise false
+
+  PRIM(__leq){ return cmp(env,args,"__leq",less_equal<Exp&>()); }
+
+  // --- CONTROL FLOW ---
+
+  // do expr ... end ~> __do(expr, ...) -> res
+  //   expr :: The expressions to evaluate, in order
+  //   res  :: The last expression, evaluated
+
+
+  PRIM(__do) {
+    return eval_through_tco(env, args);
+  }
+
+  // if a then e ( elif b then e )* ( else e )? end ~> __if(a, e, ...) -> res
+  //   a, b, c :: The conditions
+  //   e       :: The expressions to evaluate
+  //   res     :: The last expression evaluated
+
+  PRIM(__if) {
+    if (args.size() % 2) throw Err(-1, "__if: Requires even number of args.");
+
+    for (int i = 0; i < args.size(); i += 2)
+      if ((bool)(*eval(env, args[i]))) return args[i+1];
+
+    return nil;
+  }
+
+  // while cond do expr ... end ~> while(cond, expr, ...) -> res
+  //   cond :: The condition of the loop
+  //   expr :: The expressions to evaluate
+  //   res  :: The last expression, evaluated. If none, then nil
+
+  PRIM(__while) {
+    if (args.size() != 2) throw Err(-1, "__while: Requires exactly 2 args.");
+
+    Pexp res = nil;
+    while ((bool)(*eval(env, args[0])))
+      res = eval(env, { args[1] });
+
+    return res;
+  }
+
+  // --- PROCEDURES ---
+
+  // fun [s, ...] expr ~> __fun(list, expr) -> res
+  //   s    :: The symbols for the parameters
+  //   list :: The list of parameters
+  //   expr :: The expression representing the procedure
+  //   res  :: The result of the procedure 
+
   PRIM(__fun) {
     if (args.size() != 2) throw Err(-1, "__fun: Requires exactly 2 args.");
     if (args[0]->type == CALL && args[0]->call.name == intern("__list")) {
@@ -1234,6 +1442,49 @@ namespace standard {
     return Exp::Procedure(args[0]->list, body, env);
   }
 
+  // return expr ~> __return(expr) -> expr
+  //   expr :: The expression to return
+
+  PRIM(__return) {
+    if (args.size() != 1) throw Err(-1, "__return: Requires exactly 1 args.");
+    throw eval(env, args[0]);
+  }
+
+  // --- VARIABLES ---
+
+  // let sym = expr ~> __let(sym, expr) -> expr
+  //   sym  :: The symbol to set
+  //   expr :: The expr to set the symbol to
+
+  PRIM(__let) {
+    if (args.size() != 2) throw Err(-1, "__let: Requires exactly 2 args");
+    if (args[0]->type != SYMBOL) throw Err(-1, "__let: Requires symbol.");
+    auto e = eval(env, args[1]);
+    env->let(args[0], e);
+    return e;
+  }
+
+  // sym = expr ~> __assign(sym, expr) -> expr
+  //   sym  :: The symbol to set
+  //   expr :: The expr to set the symbol to
+
+  PRIM(__assign) {
+    if (args.size() != 2) throw Err(-1, "__assign: Requires exactly 2 args.");
+    if (args[0]->type != SYMBOL) throw Err(-1, "__assign: Requires symbol.");
+    auto e = eval(env, args[1]);
+    env->set(args[0], e);
+    return e;
+  }
+
+  // --- THING MODIFICATIONS ---
+
+  // thing.sym   ~> __get(thing, sym) -> res
+  // thing[expr] ~> __get(thing, expr) -> res
+  //   thing :: The thing to get values from
+  //   sym   :: The symbol to use as a key
+  //   expr  :: The expression to use as a key
+  //   res   :: The value if found when accessing, otherwise nil
+  
   PRIM(__get) {
     if (args.size() != 2) throw Err(-1, "__get: Requires exactly 2 args");
     args = eval_list(env, args);
@@ -1255,12 +1506,17 @@ namespace standard {
     if (metaget->type == THING)
       return eval(env, Exp::Call(intern("__get"), { metaget, args[1] }));
     if (metaget->type != PROCEDURE)
-      // throw Err(-1, "__get: Meta's __get must be a Thing or Procedure.");
-      // return metaget;
       return nil;
 
     return eval(env, Exp::Call(metaget, { thing, args[1] }));
   }
+
+  // thing.sym   = val ~> __set(thing, sym, val) -> val
+  // thing[expr] = val ~> __set(thing, expr, val) -> val
+  //   thing :: The thing to get values from
+  //   sym   :: The symbol to use as a key
+  //   expr  :: The expression to use as a key
+  //   val   :: The value to set
 
   PRIM(__set) {
     if (args.size() != 3) throw Err(-1, "__set: Requires exactly 3 args.");
@@ -1279,6 +1535,40 @@ namespace standard {
     return value;
   }
 
+  // thing:proc(args, ...) ~> __selfcall(thing, proc, args) -> res
+  //   thing :: The thing to access
+  //   proc  :: The procedure to call
+  //   args  :: The argument to the procedure
+  //   res   :: The result of the procedure
+
+  PRIM(__selfcall) {
+    if (args.size() != 3) throw Err(-1, "__selfcall: Requires exactly 3 args.");
+    auto a = eval(env, args[0]);
+    auto b = eval(env, args[1]);
+    if (args[2]->type != LIST) throw Err(-1, "__selfcall: Requires arg list.");
+    vector<Pexp> c;
+    c.push_back(a);
+    for (auto x : args[2]->list) c.push_back(x);
+    return eval(env, Exp::Call(__get(env, { a, b }), c));
+  }
+
+  // getmeta(thing) -> meta
+  //   thing :: The thing to access
+  //   meta  :: The Meta-Thing of thing if exists, nil otherwise
+
+  PRIM(getmeta) {
+    if (args.size() != 1) throw Err(-1, "getmeta: Requires exactly 2 args.");
+    args = eval_list(env, args);
+    if (args[0]->type != THING)
+      throw Err(-1, "getmeta: Requires Things.");
+    
+    return args[0]->thing.meta;
+  }
+  
+  // setmeta(thing, meta) -> thing
+  //   thing :: The thing to set the Meta-Thing for
+  //   meta  :: The metathing itself
+
   PRIM(setmeta) {
     if (args.size() != 2) throw Err(-1, "setmeta: Requires exactly 2 args");
     args = eval_list(env, args);
@@ -1291,113 +1581,62 @@ namespace standard {
     return a;
   }
 
-  PRIM(getmeta) {
-    if (args.size() != 1) throw Err(-1, "getmeta: Requires exactly 2 args.");
-    args = eval_list(env, args);
-    if (args[0]->type != THING)
-      throw Err(-1, "getmeta: Requires Things.");
-    
-    return args[0]->thing.meta;
-  }
-
-  PRIM(__do) {
-    return eval_through_tco(env, args);
-  }
-
-  PRIM(__if) {
-    if (args.size() % 2) throw Err(-1, "__if: Requires even number of args.");
-
-    for (int i = 0; i < args.size(); i += 2)
-      if ((bool)(*eval(env, args[i]))) return args[i+1];
-
-    return nil;
-  }
-
-
-  PRIM(__while) {
-    if (args.size() != 2) throw Err(-1, "__while: Requires exactly 2 args.");
-
-    Pexp res = nil;
-    while ((bool)(*eval(env, args[0])))
-      res = eval(env, { args[1] });
-
-    return res;
-  }
-
-  Pexp cmp(Penv e, vector<Pexp> a, string n, function<bool(Exp&,Exp&)> op) {
-    if (a.size() != 2) throw Err(-1, n + ": Requires exactly 2 args.");
-    a = eval_list(e, a);
-    return Exp::Boolean(op(*(a[0]), *(a[1])));
-  }
-
-  PRIM(__eq) { return cmp(env,args,"__eq", [](Exp&a,Exp&b){return a==b;}); }
-  PRIM(__neq){ return cmp(env,args,"__neq",[](Exp&a,Exp&b){return a!=b;}); }
-  PRIM(__and){ return cmp(env,args,"__and",[](Exp&a,Exp&b){return (bool)a&&(bool)b;}); }
-  PRIM(__or) { return cmp(env,args,"__or", [](Exp&a,Exp&b){return (bool)a||(bool)b;}); }
-  PRIM(__gt) { return cmp(env,args,"__gt", [](Exp&a,Exp&b){return a>b;}); }
-  PRIM(__geq){ return cmp(env,args,"__geq",[](Exp&a,Exp&b){return a>=b;}); }
-  PRIM(__lt) { return cmp(env,args,"__lt", [](Exp&a,Exp&b){return a<b;}); }
-  PRIM(__leq){ return cmp(env,args,"__leq",[](Exp&a,Exp&b){return a<=b;}); }
-
-  PRIM(__return) {
-    if (args.size() != 1) throw Err(-1, "__return: Requires exactly 1 args.");
-    throw eval(env, args[0]);
-  }
-
-  PRIM(__selfcall) {
-    if (args.size() != 3) throw Err(-1, "__selfcall: Requires exactly 3 args.");
-    auto a = eval(env, args[0]);
-    auto b = eval(env, args[1]);
-    if (args[2]->type != LIST) throw Err(-1, "__selfcall: Requires arg list.");
-    args[2]->list.insert(args[2]->list.begin(), a);
-    return eval(env, Exp::Call(__get(env, { a, b }), args[2]->list));
-  }
-
+  // Returns a standard environment
   Penv standard_env() {
     Penv env = make_shared<Env>(nullptr);
-
-    ADD(print, false);
+    // IO
+    ADD(print, false);   
     ADD(println, false);
-    ADD(input, false);
+    ADD(input, false);   
     ADD(gettime, false);
-    ADD(mod, false);
+    // TYPES
+    ADD(Boolean, false); 
+    ADD(Number, false);
+    ADD(String, false);  
+    ADD(__thing, false);
+    ADD(__list, false);  
+    ADD(type, false);
+    // ARITHMETIC
     ADD(__add, false);
     ADD(__sub, false);
     ADD(__mul, false);
     ADD(__div, false);
+    ADD(mod, false);
     ADD(__neg, false);
-    ADD(Boolean, false);
-    ADD(Number, false);
-    ADD(String, false);
-    ADD(type, false);
-    ADD(__not, false);
+    // COMPARISON
     ADD(__eq,  false);
     ADD(__neq, false);
-    ADD(__let, false);
-    ADD(__assign, false);
-    ADD(__fun, false);
-    ADD(__thing, false);
-    ADD(__get, false);
-    ADD(__set, false);
-    ADD(setmeta, false);
-    ADD(getmeta, false);
-    ADD(__do, true);
-    ADD(__if, true);
-    ADD(__list, false);
-    ADD(__while, false);
-    ADD(__or, false);
+    // LOGIC
+    ADD(__not, false);
     ADD(__and, false);
+    ADD(__or, false);
+    // ORDERING
     ADD(__gt, false);
     ADD(__geq, false);
     ADD(__lt, false);
     ADD(__leq, false);
+    // CONTROL FLOW
+    ADD(__do, true);
+    ADD(__if, true);
+    ADD(__while, false);
+    // PROCEDURES
+    ADD(__fun, false);
     ADD(__return, false);
+    // VARIABLES
+    ADD(__let, false);
+    ADD(__assign, false);
+    // THING MODIFICATIONS
+    ADD(__get, false);
+    ADD(__set, false);
     ADD(__selfcall, false);
+    ADD(getmeta, false);
+    ADD(setmeta, false);
 
     return env;
   }
 };
 
+// Err definitions
 Err::Err(int line, string msg) : runtime_error(
   "[line " + ((line < 0) ? "?" : to_string(line)) + "] Error: " + msg
 ) { }
@@ -1408,6 +1647,7 @@ Err::Err(Token tok, string msg) : runtime_error(
   ": " + msg
 ) { }
 
+// --- MAIN FUNCTION ---
 int main(int argc, char* argv[]) {
   if (argc > 2) {
     cout << "This is Jonah Sussman's language Lang o' Things (lot). Usage:\n\n";
@@ -1440,7 +1680,7 @@ int main(int argc, char* argv[]) {
       auto exprs = parser::parse(tokens);
 
       for (auto e : exprs) {
-        if(repl) cout << "     " << *e << endl;
+        if (repl) cout << "     " << *e << endl;
         Pexp res;
         try {
           res = eval(env, e);
@@ -1448,7 +1688,6 @@ int main(int argc, char* argv[]) {
           res = r;
         }
         if (repl) cout << *res << endl;
-        // cout << *res << endl;
       }
     } catch (const Err& e) {
       cout << e.what() << endl;

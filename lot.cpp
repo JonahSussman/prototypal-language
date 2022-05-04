@@ -1,6 +1,3 @@
-// Jonah Sussman
-// CWID 11966879
-// CS 503
 #include <bits/stdc++.h>
 using namespace std;
 
@@ -1680,14 +1677,16 @@ int main(int argc, char* argv[]) {
       auto exprs = parser::parse(tokens);
 
       for (auto e : exprs) {
-        if (repl) cout << "     " << *e << endl;
+        if (repl) 
+        cout << "     " << *e << endl;
         Pexp res;
         try {
           res = eval(env, e);
         } catch (Pexp r) {
           res = r;
         }
-        if (repl) cout << *res << endl;
+        if (repl) 
+        cout << *res << endl;
       }
     } catch (const Err& e) {
       cout << e.what() << endl;

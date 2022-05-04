@@ -1,4 +1,4 @@
-# Jonah Sussman's 503 Lisp Interpreter
+# Jonah Sussman's - Language o' Things
 
 ## Running the interpreter
 

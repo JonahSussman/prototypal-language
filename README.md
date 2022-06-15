@@ -1,5 +1,7 @@
 # Jonah Sussman's - Language o' Things
 
+Language of Things aims to be a highly extensible, multi-paradigm language that doesn't box you in. It's small, in order to get out of your way, yet highly-expressive. 
+
 ## Running the interpreter
 
 There are two ways to run the interpreter.

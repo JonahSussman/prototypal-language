@@ -1,0 +1,5 @@
+"hello"
+
+print("Hello, world!") # Returns nil
+print("Hello") print("World") # Can have multiple expressions per line
+print("A"); print("B"); print("C") # Optionally put ';' after expressions for clarity

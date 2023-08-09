@@ -586,36 +586,37 @@ vector<Token> tokenize(string src) {
     while (peek() != '\"' && !at_end()) {
       if (peek() == '\n') 
         line++;
-        advance();
-      }
-      if (at_end()) {
-        throw Err(line, "Unterminated string.");
-        return;
-      }
       advance();
-      string s = src.substr(start + 1, curr - start - 2);
+    }
+    
+    if (at_end()) {
+      throw Err(line, "Unterminated string.");
+      return;
+    }
+    advance();
+    string s = src.substr(start + 1, curr - start - 2);
 
-      stringstream ss{""};
-      for (int i = 0; i < s.size(); i++) {
-        if (s.at(i) == '\\') {
-          switch(s.at(i+1)) {
-            case '\'': ss << "\'"; i++; break;
-            case '\"': ss << "\""; i++; break;
-            case '\\': ss << "\\"; i++; break;
-            case '?':  ss << "\?"; i++; break;
-            case 'n':  ss << "\n"; i++; break;
-            case 't':  ss << "\t"; i++; break;
-            default:   ss << "\\";      break;
-          }
-        } else {
-          ss << s.at(i);
+    stringstream ss{""};
+    for (int i = 0; i < s.size(); i++) {
+      if (s.at(i) == '\\') {
+        switch(s.at(i+1)) {
+          case '\'': ss << "\'"; i++; break;
+          case '\"': ss << "\""; i++; break;
+          case '\\': ss << "\\"; i++; break;
+          case '?':  ss << "\?"; i++; break;
+          case 'n':  ss << "\n"; i++; break;
+          case 't':  ss << "\t"; i++; break;
+          default:   ss << "\\";      break;
         }
+      } else {
+        ss << s.at(i);
       }
+    }
 
-      s = ss.str();
-      auto t = new_token(STR);
-      t.str = s;
-      add(t);
+    s = ss.str();
+    auto t = new_token(STR);
+    t.str = s;
+    add(t);
   };
   // Return a number token
   static auto read_num = [&]() {
@@ -1244,14 +1245,14 @@ namespace standard {
 
   PRIM(__sub) { return ifx(env,args,"__sub", minus<double>()); }
 
-  // x + y ~> __mul(x, y) -> num
+  // x * y ~> __mul(x, y) -> num
   //   x   :: The first number
   //   y   :: The second number
   //   num :: The result of x * y
 
   PRIM(__mul) { return ifx(env,args,"__mul", multiplies<double>()); }
 
-  // x + y ~> __div(x, y) -> num
+  // x / y ~> __div(x, y) -> num
   //   x   :: The first number
   //   y   :: The second number
   //   num :: The result of x / y

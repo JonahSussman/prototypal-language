@@ -7,12 +7,13 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"unicode"
 )
 
 type (
 	Exp interface {
-		print()
+		as_string() string
 	}
 
 	Number  float64
@@ -24,12 +25,12 @@ type (
 
 	Thing struct {
 		table map[Exp]*Exp
-		thing *Exp
+		meta  *Exp
 	}
 
 	Call struct {
 		name *Exp
-		call List
+		args List
 	}
 
 	Procedure struct {
@@ -43,10 +44,66 @@ type (
 	}
 )
 
-func (n Number) print()  { fmt.Print(n) }
-func (s String) print()  { fmt.Print(s) }
-func (b Boolean) print() { fmt.Print(b) }
-func (s Symbol) print()  { fmt.Print(s) }
+var special_nil Exp
+
+func (x Number) as_string() string  { return fmt.Sprintf("%v", x) }
+func (x String) as_string() string  { return fmt.Sprintf("%v", x) }
+func (x Boolean) as_string() string { return fmt.Sprintf("%v", x) }
+func (x Symbol) as_string() string  { return fmt.Sprintf("%v", x) }
+
+func (x List) as_string() string {
+	var builder strings.Builder
+	builder.WriteString("[")
+
+	for i, e := range x {
+		builder.WriteString((*e).as_string())
+		if i != len(x)-1 {
+			builder.WriteString(", ")
+		}
+	}
+
+	builder.WriteString("]")
+	return builder.String()
+}
+
+func (t Thing) as_string() string {
+	var builder strings.Builder
+	builder.WriteString("{ ")
+
+	i := 0
+	for k, v := range t.table {
+		builder.WriteString(k.as_string())
+		builder.WriteString(" = ")
+		builder.WriteString((*v).as_string())
+		if i < len(t.table)-1 {
+			builder.WriteString(", ")
+		}
+		i++
+	}
+
+	builder.WriteString(" }")
+	return builder.String()
+}
+
+func (c Call) as_string() string {
+	var builder strings.Builder
+	builder.WriteString((*c.name).as_string())
+	builder.WriteString("(")
+
+	for i, e := range c.args {
+		builder.WriteString((*e).as_string())
+		if i != len(c.args)-1 {
+			builder.WriteString(", ")
+		}
+	}
+
+	builder.WriteString(")")
+	return builder.String()
+}
+
+func (x Primitve) as_string() string  { return fmt.Sprintf("<primitive: %v>", &x) }
+func (x Procedure) as_string() string { return fmt.Sprintf("<procedure: %v>", &x) }
+func (x Special) as_string() string   { return fmt.Sprintf("<special: %v>", &x) }
 
 var obmap map[string]*Exp
 
@@ -334,18 +391,215 @@ func parse_multimatch(tks []token, idx *int, v []string) int {
 
 func parse(tokens []token) (exps []*Exp, err error) {
 	var idx int
-	for true {
+	for !parse_at_end(tokens, &idx) {
 		var exp *Exp
 		exp, err = parse_expr(tokens, &idx)
 
 		if err != nil {
-			return
+			return nil, err
 		}
 
 		exps = append(exps, exp)
 	}
 
-	return
+	return exps, nil
+}
+
+func parse_block(tks []token, idx *int, terms []string) (exp *Exp, err error) {
+	var block List
+	for parse_multimatch(tks, idx, terms) < 0 {
+		exp, err = parse_expr(tks, idx)
+		if err != nil {
+			return nil, err
+		}
+		block = append(block, exp)
+	}
+	(*idx)--
+	c := Exp(Call{intern("__do"), block})
+	return &c, nil
+}
+
+func parse_do(tks []token, idx *int) (ret *Exp, err error) {
+	ret, err = parse_block(tks, idx, []string{"END"})
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = parse_consume(tks, idx, "END", "Expect 'end' after do block.")
+	if err != nil {
+		return nil, err
+	}
+
+	return ret, nil
+}
+
+func parse_while(tks []token, idx *int) (ret *Exp, err error) {
+	ret, err = parse_expr(tks, idx)
+	if err != nil {
+		return nil, err
+	}
+
+	args := List{ret}
+
+	parse_consume(tks, idx, "DO", "Expect 'do' after while condition.")
+	if err != nil {
+		return nil, err
+	}
+
+	ret, err = parse_block(tks, idx, []string{"END"})
+	if err != nil {
+		return nil, err
+	}
+
+	args = append(args, ret)
+
+	parse_consume(tks, idx, "END", "Expect 'end' after while block.")
+	if err != nil {
+		return nil, err
+	}
+
+	c := Exp(Call{intern("__while"), args})
+	return &c, nil
+}
+
+func parse_if(tks []token, idx *int) (ret *Exp, err error) {
+	return nil, token_error(tks[*idx], "'parse_if' not implemented.")
+}
+
+func parse_fun(tks []token, idx *int) (ret *Exp, err error) {
+	return nil, token_error(tks[*idx], "'parse_fun' not implemented.")
+}
+
+func parse_let(tks []token, idx *int) (ret *Exp, err error) {
+	return nil, token_error(tks[*idx], "'parse_let' not implemented.")
+}
+
+func parse_return(tks []token, idx *int) (ret *Exp, err error) {
+	return nil, token_error(tks[*idx], "'parse_return' not implemented.")
+}
+
+func parse_primary(tks []token, idx *int) (ret *Exp, err error) {
+	if parse_match(tks, idx, "TRUE") {
+		x := Exp(Boolean(true))
+		return &x, nil
+	}
+	if parse_match(tks, idx, "FALSE") {
+		x := Exp(Boolean(false))
+		return &x, nil
+	}
+	if parse_match(tks, idx, "NIL") {
+		return &special_nil, nil
+	}
+	if parse_match(tks, idx, "NUM") {
+		if num, ok := tks[*idx-1].literal.(float64); ok {
+			x := Exp(Number(num))
+			return &x, nil
+		}
+		return nil, token_error(tks[*idx], "Mismatched literal and token values.")
+	}
+	if parse_match(tks, idx, "STR") {
+		if str, ok := tks[*idx-1].literal.(string); ok {
+			x := Exp(String(str))
+			return &x, nil
+		}
+		return nil, token_error(tks[*idx], "Mismatched literal and token values.")
+	}
+
+	if parse_match(tks, idx, "SYM") {
+		if sym, ok := tks[*idx-1].literal.(string); ok {
+			x := intern(sym)
+			return x, nil
+		}
+		return nil, token_error(tks[*idx], "Mismatched literal and token values.")
+	}
+	if parse_match(tks, idx, "LCURLY") {
+		return nil, token_error(tks[*idx], "'parse_thing_expr' not implemented.")
+	}
+	if parse_match(tks, idx, "LBRACK") {
+		return nil, token_error(tks[*idx], "'parse_list_expr' not implemented.")
+	}
+	if parse_match(tks, idx, "LPAREN") {
+		x, err := parse_expr(tks, idx)
+		if err != nil {
+			return nil, err
+		}
+
+		_, err = parse_consume(tks, idx, "RPAREN", "Expect ')' after grouping expression.")
+		if err != nil {
+			return nil, err
+		}
+
+		return x, nil
+	}
+
+	return nil, token_error(tks[*idx], "Unexpected expression.")
+}
+
+func parse_infix(
+	tks []token,
+	idx *int,
+	next func([]token, *int) (ret *Exp, err error),
+	ts []string,
+) (ret *Exp, err error) {
+	infix_map := map[string]string{
+		"SLASH":      "__div",
+		"STAR":       "__mul",
+		"MINUS":      "__sub",
+		"PLUS":       "__add",
+		"GREATER":    "__gt",
+		"GREATER_EQ": "__geq",
+		"LESS":       "__lt",
+		"LESS_EQ":    "__leq",
+		"BANG_EQ":    "__neq",
+		"EQ_EQ":      "__eq",
+		"AND":        "__and",
+		"OR":         "__or",
+	}
+
+	ret, err = next(tks, idx)
+	if err != nil {
+		return nil, err
+	}
+
+	i := parse_multimatch(tks, idx, ts)
+	for i >= 0 {
+		next_exp, err := next(tks, idx)
+		if err != nil {
+			return nil, err
+		}
+
+		exp := Exp(Call{intern(infix_map[ts[i]]), List{ret, next_exp}})
+		ret = &exp
+
+		i = parse_multimatch(tks, idx, ts)
+	}
+
+	return ret, nil
+}
+
+func parse_fact(tks []token, idx *int) (ret *Exp, err error) {
+	return parse_infix(tks, idx, parse_primary, []string{"SLASH", "STAR"})
+}
+func parse_term(tks []token, idx *int) (ret *Exp, err error) {
+	return parse_infix(tks, idx, parse_fact, []string{"MINUS", "PLUS"})
+}
+func parse_comp(tks []token, idx *int) (ret *Exp, err error) {
+	return parse_infix(tks, idx, parse_term, []string{"GREATER", "GREATER_EQ", "LESS", "LESS_EQ"})
+}
+func parse_eqty(tks []token, idx *int) (ret *Exp, err error) {
+	return parse_infix(tks, idx, parse_comp, []string{"BANG_EQ", "EQ_EQ"})
+}
+func parse_land(tks []token, idx *int) (ret *Exp, err error) {
+	return parse_infix(tks, idx, parse_eqty, []string{"AND"})
+}
+func parse_lor(tks []token, idx *int) (ret *Exp, err error) {
+	return parse_infix(tks, idx, parse_land, []string{"OR"})
+}
+
+func parse_assignment(tks []token, idx *int) (ret *Exp, err error) {
+	ret, err = parse_lor(tks, idx)
+	// TODO: Implement actual stuff
+	return ret, err
 }
 
 func parse_expr(tks []token, idx *int) (ret *Exp, err error) {
@@ -374,21 +628,10 @@ func parse_expr(tks []token, idx *int) (ret *Exp, err error) {
 	return
 }
 
-func parse_block(tks []token, idx *int, terms []string) (exp *Exp, err error) {
-	var block List
-	for parse_multimatch(tks, idx, terms) < 0 {
-		exp, err = parse_expr(tks, idx)
-		if err != nil {
-			return nil, err
-		}
-		block = append(block, exp)
-	}
-	(*idx)--
-	c := Exp(Call{intern("__do"), block})
-	return &c, nil
-}
-
 func main() {
+	obmap = make(map[string]*Exp)
+	special_nil = Exp(Special(0))
+
 	filename := flag.String("i", "", "")
 	flag.Parse()
 
@@ -407,11 +650,23 @@ func main() {
 		}
 
 		tokens, _ := tokenize(s)
-		exprs, _ := parse(&tokens)
 
+		fmt.Println("TOKENS:")
 		for _, e := range tokens {
 			fmt.Print(e.kind + " " + e.lexeme + " ")
 			fmt.Println(e.literal)
+		}
+
+		fmt.Println("EXPRS:")
+
+		exprs, err := parse(tokens)
+		if err != nil {
+			fmt.Println(err)
+			continue
+		}
+
+		for _, e := range exprs {
+			fmt.Println((*e).as_string())
 		}
 	}
 }

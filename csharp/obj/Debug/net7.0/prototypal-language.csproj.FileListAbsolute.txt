@@ -1,0 +1,15 @@
+/home/jonah/Projects/personal/prototypal-language/csharp/bin/Debug/net7.0/prototypal-language
+/home/jonah/Projects/personal/prototypal-language/csharp/bin/Debug/net7.0/prototypal-language.deps.json
+/home/jonah/Projects/personal/prototypal-language/csharp/bin/Debug/net7.0/prototypal-language.runtimeconfig.json
+/home/jonah/Projects/personal/prototypal-language/csharp/bin/Debug/net7.0/prototypal-language.dll
+/home/jonah/Projects/personal/prototypal-language/csharp/bin/Debug/net7.0/prototypal-language.pdb
+/home/jonah/Projects/personal/prototypal-language/csharp/obj/Debug/net7.0/prototypal-language.csproj.AssemblyReference.cache
+/home/jonah/Projects/personal/prototypal-language/csharp/obj/Debug/net7.0/prototypal-language.GeneratedMSBuildEditorConfig.editorconfig
+/home/jonah/Projects/personal/prototypal-language/csharp/obj/Debug/net7.0/prototypal-language.AssemblyInfoInputs.cache
+/home/jonah/Projects/personal/prototypal-language/csharp/obj/Debug/net7.0/prototypal-language.AssemblyInfo.cs
+/home/jonah/Projects/personal/prototypal-language/csharp/obj/Debug/net7.0/prototypal-language.csproj.CoreCompileInputs.cache
+/home/jonah/Projects/personal/prototypal-language/csharp/obj/Debug/net7.0/prototypal-language.dll
+/home/jonah/Projects/personal/prototypal-language/csharp/obj/Debug/net7.0/refint/prototypal-language.dll
+/home/jonah/Projects/personal/prototypal-language/csharp/obj/Debug/net7.0/prototypal-language.pdb
+/home/jonah/Projects/personal/prototypal-language/csharp/obj/Debug/net7.0/prototypal-language.genruntimeconfig.cache
+/home/jonah/Projects/personal/prototypal-language/csharp/obj/Debug/net7.0/ref/prototypal-language.dll

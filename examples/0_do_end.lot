@@ -1,0 +1,9 @@
+let i = 0
+
+do 
+  println("The value is: ", i)
+  i = i+1
+  println("The value is: ", i)
+end
+
+println("The value is: ", i)

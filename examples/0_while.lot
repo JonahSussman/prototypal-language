@@ -1,0 +1,13 @@
+let i = 0
+while i < 5 do
+  println("The value is: ", i)
+  i = i + 1
+  println("The value is: ", i)
+end
+
+let bottles = Number(input("How many bottles of milk are on the wall? "))
+
+# Demonstration of short-circuit logic evaulation
+while (bottles == nil) or (bottles < 1) or (mod(bottles, 1) != 0) do
+  bottles = Number(input("Please enter a positive number."))
+end

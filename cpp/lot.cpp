@@ -1394,7 +1394,7 @@ namespace standard {
     return nil;
   }
 
-  // while cond do expr ... end ~> while(cond, expr, ...) -> res
+  // while cond do expr ... end ~> __while(cond, expr, ...) -> res
   //   cond :: The condition of the loop
   //   expr :: The expressions to evaluate
   //   res  :: The last expression, evaluated. If none, then nil

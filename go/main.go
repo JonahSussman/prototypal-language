@@ -16,7 +16,7 @@ type (
 	Exp interface {
 		as_string() string
 		as_bool() bool
-		get_type() string
+		// get_type() string
 		// eval(*Env) (*Exp, RetVal, error)
 	}
 
@@ -42,7 +42,7 @@ type (
 		env          *Env
 	}
 
-	Primitve struct {
+	Primitive struct {
 		fun func(*Env, List, *Exp) (*Exp, RetVal, error)
 		tco bool
 	}
@@ -110,7 +110,7 @@ func (c Call) as_string() string {
 	return builder.String()
 }
 
-func (x Primitve) as_string() string  { return fmt.Sprintf("<primitive: %v>", &x) }
+func (x Primitive) as_string() string { return fmt.Sprintf("<primitive: %v>", &x) }
 func (x Procedure) as_string() string { return fmt.Sprintf("<procedure: %v>", &x) }
 func (x Special) as_string() string   { return fmt.Sprintf("<special: %v>", x) }
 
@@ -121,21 +121,21 @@ func (x Symbol) as_bool() bool    { return true }
 func (x List) as_bool() bool      { return true }
 func (x Thing) as_bool() bool     { return true }
 func (x Call) as_bool() bool      { return true }
-func (x Primitve) as_bool() bool  { return true }
+func (x Primitive) as_bool() bool { return true }
 func (x Procedure) as_bool() bool { return true }
 func (x Special) as_bool() bool   { return string(x) == "nil" } // Go copies :(
 
 // Really hacky but I couldn't figure out a more elegant way to do it
-func (x Number) get_type() string    { return "NUMBER" }
-func (x String) get_type() string    { return "STRING" }
-func (x Boolean) get_type() string   { return "BOOLEAN" }
-func (x Symbol) get_type() string    { return "SYMBOL" }
-func (x List) get_type() string      { return "LIST" }
-func (x Thing) get_type() string     { return "THING" }
-func (x Call) get_type() string      { return "CALL" }
-func (x Primitve) get_type() string  { return "PRIMITIVE" }
-func (x Procedure) get_type() string { return "PROCEDURE" }
-func (x Special) get_type() string   { return "SPECIAL" }
+// func (x Number) get_type() string    { return "NUMBER" }
+// func (x String) get_type() string    { return "STRING" }
+// func (x Boolean) get_type() string   { return "BOOLEAN" }
+// func (x Symbol) get_type() string    { return "SYMBOL" }
+// func (x List) get_type() string      { return "LIST" }
+// func (x Thing) get_type() string     { return "THING" }
+// func (x Call) get_type() string      { return "CALL" }
+// func (x Primitive) get_type() string  { return "PRIMITIVE" }
+// func (x Procedure) get_type() string { return "PROCEDURE" }
+// func (x Special) get_type() string   { return "SPECIAL" }
 
 // TODO: Implement
 func exp_eq(l *Exp, r *Exp) (bool, error) { return true, nil }
@@ -1218,37 +1218,23 @@ func eval_list(env *Env, list List, catch *Exp) (List, RetVal, error) {
 
 func eval(env *Env, exp *Exp, upper_catch *Exp) (immediate *Exp, return_value RetVal, rerr error) {
 	for {
-		// fmt.Printf("[eval] evaling: %v\n", (*exp).as_string())
-		// fmt.Printf("[eval] i adr before: %v\n", (*env).get(intern("i")))
-		if (*env).get(intern("i")) != nil {
-			// fmt.Printf("[eval] i val before: %v\n", float64((*(*env).get(intern("i"))).(Number)))
-			// fmt.Printf("[eval] i type before: %v\n", string((*(*env).get(intern("i"))).get_type()))
-			// fmt.Printf("[eval] i intern type before: %v\n", (*intern("i")).get_type())
-		}
-
-		// Really ugly
-		_, is_number := (*exp).(Number)
-		_, is_string := (*exp).(String)
-		_, is_boolean := (*exp).(Boolean)
-		_, is_thing := (*exp).(Thing)
-		_, is_primitive := (*exp).(Primitve)
-		_, is_procedure := (*exp).(Procedure)
-		_, is_special := (*exp).(Special)
-		is_self_evaluating := is_number || is_string || is_boolean || is_thing || is_primitive || is_procedure || is_special
-		if is_self_evaluating {
+		switch value := (*exp).(type) {
+		case Number:
+		case String:
+		case Boolean:
+		case Thing:
+		case Primitive:
+		case Procedure:
+		case Special:
 			return exp, RetVal{}, nil
-		}
-
-		if sym, is_symbol := (*exp).(Symbol); is_symbol {
+		case Symbol:
 			bind := (*env).get(exp)
 			if bind == nil {
-				return nil, RetVal{}, errors.New("eval: Undefined symbol '" + string(sym) + "'.")
+				return nil, RetVal{}, fmt.Errorf("eval: Undefined symbol '%v'", string(value))
 			}
 			return bind, RetVal{}, nil
-		}
-
-		if call, is_call := (*exp).(Call); is_call {
-			fun, rval, err := eval(env, call.name, upper_catch)
+		case Call:
+			fun, rval, err := eval(env, value.name, upper_catch)
 			if err != nil {
 				return nil, RetVal{}, err
 			}
@@ -1256,9 +1242,9 @@ func eval(env *Env, exp *Exp, upper_catch *Exp) (immediate *Exp, return_value Re
 				return nil, rval, nil
 			}
 
-			arg := call.args
+			arg := value.args
 
-			primitive, fun_is_primitive := (*fun).(Primitve)
+			primitive, fun_is_primitive := (*fun).(Primitive)
 			procedure, fun_is_procedure := (*fun).(Procedure)
 
 			if !fun_is_primitive && !fun_is_procedure {
@@ -1336,9 +1322,11 @@ func eval(env *Env, exp *Exp, upper_catch *Exp) (immediate *Exp, return_value Re
 				}
 			}
 			continue
+		case List:
+			return nil, RetVal{}, fmt.Errorf("eval: Attempted to evaluate List.")
+		default:
+			return nil, RetVal{}, fmt.Errorf("eval: Unknown exp type.")
 		}
-
-		return nil, RetVal{}, errors.New("eval: Unknown exp type." + (*exp).get_type())
 	}
 }
 
@@ -1346,7 +1334,7 @@ func standard_env() *Env {
 	env := Env{make(map[*Exp]*Exp), nil}
 
 	add := func(name string, tco bool, fun func(env *Env, args List, catch *Exp) (*Exp, RetVal, error)) {
-		env.vars[intern(name)] = make_pexp(Primitve{fun, tco})
+		env.vars[intern(name)] = make_pexp(Primitive{fun, tco})
 	}
 
 	// --- IO ---

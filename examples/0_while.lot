@@ -1,13 +1,24 @@
-let i = 0
-while i < 5 do
-  println("The value is: ", i)
-  i = i + 1
-  println("The value is: ", i)
-end
+# let i = 0
+# while i < 5 do
+#   println("The value is: ", i)
+#   i = i + 1
+#   println("The value is: ", i)
+# end
 
-let bottles = Number(input("How many bottles of milk are on the wall? "))
+# let bottles = Number(input("How many bottles of milk are on the wall? "))
 
-# Demonstration of short-circuit logic evaulation
-while (bottles == nil) or (bottles < 1) or (mod(bottles, 1) != 0) do
-  bottles = Number(input("Please enter a positive number."))
+let bottles = 10
+
+let plural = fun [] if bottles == 1 then " bottle " else " bottles " end
+let count  = fun [] if bottles == 0 then "No more" else bottles end
+
+#println(plural())
+#println(count())
+
+while bottles > 0 do
+  println("* ", count(), plural(), "of milk on the wall,")
+  println("  ", count(), plural(), "of milk!")
+  println("  Take one down, pass it around!")
+  bottles = bottles - 1
+  println("  ", count(), plural(), "of milk on the wall!\n")
 end

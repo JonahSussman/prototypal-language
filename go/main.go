@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"reflect"
 	"strconv"
 	"strings"
 	"unicode"
@@ -138,7 +139,45 @@ func (x Special) as_bool() bool   { return string(x) == "nil" } // Go copies :(
 // func (x Special) get_type() string   { return "SPECIAL" }
 
 // TODO: Implement
-func exp_eq(l *Exp, r *Exp) (bool, error) { return true, nil }
+func exp_eq(l *Exp, r *Exp) (bool, error) {
+	switch left := (*l).(type) {
+
+	case Symbol:
+		if right, ok := (*r).(Symbol); ok {
+			return left == right, nil
+		}
+	case String:
+		if right, ok := (*r).(String); ok {
+			return left == right, nil
+		}
+	case Number:
+		if right, ok := (*r).(Number); ok {
+			return left == right, nil
+		}
+	case Boolean:
+		if right, ok := (*r).(Boolean); ok {
+			return left == right, nil
+		}
+	case List:
+		if right, ok := (*r).(List); ok {
+			if len(left) != len(right) {
+				return false, nil
+			}
+
+			for i := 0; i < len(left); i++ {
+				eq, err := exp_eq(left[i], right[i])
+				if err != nil || !eq {
+					return false, err
+				}
+			}
+
+			return true, nil
+		}
+	}
+
+	return l == r, nil
+}
+
 func exp_neq(l *Exp, r *Exp) (bool, error) {
 	res, err := exp_eq(l, r)
 	if err != nil {
@@ -148,41 +187,62 @@ func exp_neq(l *Exp, r *Exp) (bool, error) {
 }
 
 func exp_lt(l *Exp, r *Exp) (bool, error) {
-	if (*l).get_type() != (*r).get_type() {
-		return false, errors.New("Can only order-compare same type.")
+	ok := true // types are the same
+
+	switch left := (*l).(type) {
+	case Symbol:
+		if right, ok := (*r).(Symbol); ok {
+			return string(left) < string(right), nil
+		}
+	case String:
+		if right, ok := (*r).(String); ok {
+			return string(left) < string(right), nil
+		}
+	case Number:
+		if right, ok := (*r).(Number); ok {
+			return float64(left) < float64(right), nil
+		}
+	case Boolean:
+		if right, ok := (*r).(Boolean); ok {
+			return !bool(left) && bool(right), nil
+		}
 	}
 
-	switch (*l).get_type() {
-	case "SYMBOL":
-		return string((*l).(Symbol)) < string((*r).(Symbol)), nil
-	case "STRING":
-		return string((*l).(String)) < string((*r).(String)), nil
-	case "NUMBER":
-		return float64((*l).(Number)) < float64((*r).(Number)), nil
-	case "BOOLEAN":
-		return !bool((*l).(Boolean)) && bool((*r).(Boolean)), nil
+	if !ok {
+		return false, errors.New("Can only order-compare same type.")
 	}
 
 	return false, errors.New("Cannot order-compare non-well-ordered types!")
 }
 
 func exp_leq(l *Exp, r *Exp) (bool, error) {
-	if (*l).get_type() != (*r).get_type() {
+	ok := true // types are the same
+
+	switch left := (*l).(type) {
+	case Symbol:
+		if right, ok := (*r).(Symbol); ok {
+			return string(left) <= string(right), nil
+		}
+	case String:
+		if right, ok := (*r).(String); ok {
+			return string(left) <= string(right), nil
+		}
+	case Number:
+		if right, ok := (*r).(Number); ok {
+			return float64(left) <= float64(right), nil
+		}
+	case Boolean:
+		if right, ok := (*r).(Boolean); ok {
+			return !bool(left) || bool(right), nil
+		}
+	}
+
+	if !ok {
 		return false, errors.New("Can only order-compare same type.")
 	}
 
-	switch (*l).get_type() {
-	case "SYMBOL":
-		return string((*l).(Symbol)) <= string((*r).(Symbol)), nil
-	case "STRING":
-		return string((*l).(String)) <= string((*r).(String)), nil
-	case "NUMBER":
-		return float64((*l).(Number)) <= float64((*r).(Number)), nil
-	case "BOOLEAN":
-		return !bool((*l).(Boolean)) || bool((*r).(Boolean)), nil
-	}
-
 	return false, errors.New("Cannot order-compare non-well-ordered types!")
+
 }
 
 func exp_gt(l *Exp, r *Exp) (bool, error) {
@@ -222,6 +282,7 @@ type Env struct {
 func make_env(outer *Env, vars List, vals List) (*Env, error) {
 	env := Env{}
 	env.outer = outer
+	env.vars = make(map[*Exp]*Exp)
 	err := env.zip(vars, vals)
 	if err != nil {
 		return nil, err
@@ -236,7 +297,9 @@ func (env *Env) find(sym *Exp) bool {
 }
 
 func (env *Env) get(sym *Exp) (exp *Exp) {
-	if exp, ok := env.vars[sym]; ok {
+	exp, ok := env.vars[sym]
+
+	if ok && exp != nil {
 		return exp
 	}
 
@@ -269,7 +332,7 @@ func env_set(env *Env, sym *Exp, exp *Exp) error {
 	}
 
 	if e == nil {
-		println("Couldn't find symbol!")
+		// println("Couldn't find symbol!")
 		return errors.New("Could not find symbol in env!")
 	}
 
@@ -1192,10 +1255,13 @@ func eval_through_tco(env *Env, list List, catch *Exp) (*Exp, RetVal, error) {
 
 func eval_list(env *Env, list List, catch *Exp) (List, RetVal, error) {
 	// fmt.Printf("[eval_list] list before: %v\n", list.as_string())
-
+	// println("inside eval_list")
 	var ret List
 
 	for i, _ := range list {
+		// println("calling eval on " + (*list[i]).as_string())
+		// fmt.Printf("i: %v\n", i)
+
 		item, rval, err := eval(env, list[i], catch)
 
 		if err != nil {
@@ -1218,24 +1284,60 @@ func eval_list(env *Env, list List, catch *Exp) (List, RetVal, error) {
 
 func eval(env *Env, exp *Exp, upper_catch *Exp) (immediate *Exp, return_value RetVal, rerr error) {
 	for {
+		var name string
+		if DEBUG {
+			if t := reflect.TypeOf(*exp); t.Kind() == reflect.Ptr {
+				name = "*" + t.Elem().Name()
+			} else {
+				name = t.Name()
+			}
+
+			fmt.Printf("Evaluating: (%v) %v::%v\n", exp, name, (*exp).as_string())
+			bufio.NewReader(os.Stdin).ReadString('\n')
+		}
+
 		switch value := (*exp).(type) {
 		case Number:
+			return exp, RetVal{}, nil
+
 		case String:
+			return exp, RetVal{}, nil
+
 		case Boolean:
+			return exp, RetVal{}, nil
+
 		case Thing:
+			return exp, RetVal{}, nil
+
 		case Primitive:
+			return exp, RetVal{}, nil
+
 		case Procedure:
+			return exp, RetVal{}, nil
+
 		case Special:
 			return exp, RetVal{}, nil
+
 		case Symbol:
 			bind := (*env).get(exp)
+			if DEBUG {
+				fmt.Printf("  symbol ptr: %v\n", bind)
+				if bind != nil {
+					fmt.Printf("  symbol val: %v\n", (*bind).as_string())
+				}
+				println()
+			}
+
 			if bind == nil {
+				// fmt.Printf("eval::Symbol erroring out\n")
 				return nil, RetVal{}, fmt.Errorf("eval: Undefined symbol '%v'", string(value))
 			}
 			return bind, RetVal{}, nil
+
 		case Call:
 			fun, rval, err := eval(env, value.name, upper_catch)
 			if err != nil {
+				// println("eval::Call erroring out")
 				return nil, RetVal{}, err
 			}
 			if rval.fun != nil {
@@ -1244,14 +1346,17 @@ func eval(env *Env, exp *Exp, upper_catch *Exp) (immediate *Exp, return_value Re
 
 			arg := value.args
 
-			primitive, fun_is_primitive := (*fun).(Primitive)
-			procedure, fun_is_procedure := (*fun).(Procedure)
+			// var fun_name string
+			// if t := reflect.TypeOf(*exp); t.Kind() == reflect.Ptr {
+			// 	name = "*" + t.Elem().Name()
+			// } else {
+			// 	name = t.Name()
+			// }
 
-			if !fun_is_primitive && !fun_is_procedure {
-				return nil, RetVal{}, errors.New("eval: Call must be PRIMITIVE or PROCEDURE.")
-			}
+			// println("fun is a " + name)
 
-			if fun_is_procedure {
+			switch execution := (*fun).(type) {
+			case Procedure:
 				this_catch := make_pexp(Special(fmt.Sprintf("procedure %v", fun)))
 
 				farg, rval, err := eval_list(env, arg, this_catch)
@@ -1266,16 +1371,16 @@ func eval(env *Env, exp *Exp, upper_catch *Exp) (immediate *Exp, return_value Re
 					return nil, rval, nil
 				}
 
-				fenv := procedure.env
+				fenv := execution.env
 
-				new_env, err := make_env(fenv, procedure.params, farg)
+				new_env, err := make_env(fenv, execution.params, farg)
 				if err != nil {
 					return nil, RetVal{}, nil
 				}
 
 				env = new_env
 
-				texp, rval, err := eval_through_tco(env, procedure.body, this_catch)
+				texp, rval, err := eval_through_tco(env, execution.body, this_catch)
 				if err != nil {
 					return nil, RetVal{}, err
 				}
@@ -1308,22 +1413,38 @@ func eval(env *Env, exp *Exp, upper_catch *Exp) (immediate *Exp, return_value Re
 						return e, RetVal{}, nil
 					}
 				}
-			} else {
-				exp, rval, err = primitive.fun(env, arg, upper_catch)
+			case Primitive:
+				exp, rval, err = execution.fun(env, arg, upper_catch)
+
+				if DEBUG {
+					fmt.Printf("  %v result ptr: %v\n", execution.as_string(), exp)
+					if exp != nil {
+						fmt.Printf("  %v result val: %v\n", execution.as_string(), (*exp).as_string())
+					}
+					println()
+				}
+
 				if err != nil {
-					return nil, RetVal{}, nil
+					// println("eval::Call::Primitive erroring out")
+
+					return nil, RetVal{}, err
 				}
 				if rval.fun != nil {
 					return nil, rval, nil
 				}
 
-				if !primitive.tco {
+				if !execution.tco {
 					return exp, RetVal{}, nil
 				}
+			default:
+				return nil, RetVal{}, errors.New("eval: Call must be PRIMITIVE or PROCEDURE.")
 			}
+
 			continue
+
 		case List:
 			return nil, RetVal{}, fmt.Errorf("eval: Attempted to evaluate List.")
+
 		default:
 			return nil, RetVal{}, fmt.Errorf("eval: Unknown exp type.")
 		}
@@ -1428,21 +1549,21 @@ func standard_env() *Env {
 			return nil, rval, nil
 		}
 
-		switch (*exp).get_type() {
-		case "NUMBER":
-			return exp, RetVal{}, nil
-		case "BOOLEAN":
-			if bool((*exp).(Boolean)) {
+		switch value := (*exp).(type) {
+		case Number:
+			return make_pexp(value), RetVal{}, nil
+		case Boolean:
+			if bool(value) {
 				return make_pexp(Number(1)), RetVal{}, nil
 			} else {
 				return make_pexp(Number(0)), RetVal{}, nil
 			}
-		case "STRING":
-			val, err := strconv.Atoi(string((*exp).(String)))
+		case String:
+			conv, err := strconv.Atoi(string(value))
 			if err != nil {
 				return special_nil, RetVal{}, nil
 			} else {
-				return make_pexp(Number(val)), RetVal{}, nil
+				return make_pexp(Number(conv)), RetVal{}, nil
 			}
 		}
 
@@ -1479,10 +1600,14 @@ func standard_env() *Env {
 			return nil, rval, nil
 		}
 
-		lower := strings.ToLower((*exp).get_type())
-		title := strings.Title(lower)
+		var name string
+		if t := reflect.TypeOf(*exp); t.Kind() == reflect.Ptr {
+			name = "*" + t.Elem().Name()
+		} else {
+			name = t.Name()
+		}
 
-		return make_pexp(String(title)), RetVal{}, nil
+		return make_pexp(String(name)), RetVal{}, nil
 	})
 
 	// --- ARITHMETIC ---
@@ -1492,19 +1617,24 @@ func standard_env() *Env {
 		if len(a) != 2 {
 			return nil, RetVal{}, errors.New(n + ": Requires exactly 2 args.")
 		}
+
 		a, rval, err := eval_list(env, a, c)
+
 		if err != nil {
 			return nil, RetVal{}, err
 		}
 		if rval.fun != nil {
 			return nil, rval, nil
 		}
-		if (*a[0]).get_type() != "NUMBER" || (*a[1]).get_type() != "NUMBER" {
+
+		x, xOk := (*a[0]).(Number)
+		y, yOk := (*a[1]).(Number)
+
+		if !xOk || !yOk {
 			return nil, RetVal{}, errors.New(n + ": Args must be of type Number.")
 		}
 
-		x, y := float64((*a[0]).(Number)), float64((*a[1]).(Number))
-		return make_pexp(Number(op(x, y))), RetVal{}, nil
+		return make_pexp(Number(op(float64(x), float64(y)))), RetVal{}, nil
 	}
 
 	// x + y ~> __add(x, y) -> num
@@ -1553,7 +1683,7 @@ func standard_env() *Env {
 	//   num :: The negation of x
 	add("__neg", false, func(env *Env, args List, catch *Exp) (*Exp, RetVal, error) {
 		if len(args) != 1 {
-			return nil, RetVal{}, errors.New("__neg: Requires exactly 2 args.")
+			return nil, RetVal{}, errors.New("__neg: Requires exactly 1 arg.")
 		}
 		a, rval, err := eval_list(env, args, catch)
 		if err != nil {
@@ -1562,33 +1692,41 @@ func standard_env() *Env {
 		if rval.fun != nil {
 			return nil, rval, nil
 		}
-		if (*a[0]).get_type() != "NUMBER" {
+
+		x, ok := (*a[0]).(Number)
+		if !ok {
 			return nil, RetVal{}, errors.New("__neg: Args must be of type Number.")
 		}
 
-		x := float64((*a[0]).(Number))
-		return make_pexp(Number(-x)), RetVal{}, nil
+		return make_pexp(Number(-float64(x))), RetVal{}, nil
 	})
 
 	// --- COMPARISON ---
 
 	// Helper function for infix comparison and ordering operations
 	cmp := func(env *Env, a List, c *Exp, n string, op func(*Exp, *Exp) (bool, error)) (*Exp, RetVal, error) {
+		// println("cmp: 0")
 		if len(a) != 2 {
 			return nil, RetVal{}, errors.New(n + ": Requires exactly 2 args.")
 		}
+		// println("cmp: 1")
 		a, rval, err := eval_list(env, a, c)
 		if err != nil {
 			return nil, RetVal{}, err
 		}
+		// println("cmp: 2")
 		if rval.fun != nil {
 			return nil, rval, nil
 		}
 
+		// println("cmp: 3")
 		res, err := op(a[0], a[1])
 		if err != nil {
+			fmt.Printf("%v\n", err)
 			return nil, RetVal{}, err
 		}
+
+		// println("cmp: 4")
 
 		return make_pexp(Boolean(res)), RetVal{}, nil
 	}
@@ -1599,11 +1737,19 @@ func standard_env() *Env {
 	//   bool :: Returns true if the objects are equal (by value for trivial),
 	//           otherwise false.
 
+	add("__eq", false, func(env *Env, args List, catch *Exp) (*Exp, RetVal, error) {
+		return cmp(env, args, catch, "__eq", exp_eq)
+	})
+
 	// x != y ~> __neq(x, y) -> bool
 	//   x    :: The first expression
 	//   y    :: The second expression
 	//   bool :: Returns false if the objects are equal (by value for trivial),
 	//           otherwise true.
+
+	add("__neq", false, func(env *Env, args List, catch *Exp) (*Exp, RetVal, error) {
+		return cmp(env, args, catch, "__neq", exp_neq)
+	})
 
 	// --- LOGIC ---
 
@@ -1611,15 +1757,84 @@ func standard_env() *Env {
 	//   x    :: The expression to evaluate
 	//   bool :: The opposite truthy value of x
 
+	add("__not", false, func(env *Env, args List, catch *Exp) (*Exp, RetVal, error) {
+		if len(args) != 1 {
+			return nil, RetVal{}, errors.New("__not: Requires exactly 1 arg.")
+		}
+
+		e, rval, err := eval(env, args[0], catch)
+		if err != nil {
+			return nil, RetVal{}, err
+		}
+		if rval.fun != nil {
+			return nil, rval, nil
+		}
+		return make_pexp(Boolean(!(*e).as_bool())), RetVal{}, nil
+	})
+
 	// x and y ~> __and(x, y) -> bool
 	//   x    :: The first expression
 	//   y    :: The second expression
 	//   bool :: true if x and y are truthy, otherwise false
 
+	add("__and", false, func(env *Env, args List, catch *Exp) (*Exp, RetVal, error) {
+		if len(args) != 2 {
+			return nil, RetVal{}, errors.New("__and: Requires exactly 2 args.")
+		}
+
+		x, rval, err := eval(env, args[0], catch)
+		if err != nil {
+			return nil, RetVal{}, err
+		}
+		if rval.fun != nil {
+			return nil, rval, nil
+		}
+
+		if !(*x).as_bool() {
+			return make_pexp(Boolean(false)), RetVal{}, nil
+		}
+
+		y, rval, err := eval(env, args[1], catch)
+		if err != nil {
+			return nil, RetVal{}, err
+		}
+		if rval.fun != nil {
+			return nil, rval, nil
+		}
+		return make_pexp(Boolean((*y).as_bool())), RetVal{}, nil
+	})
+
 	// x or y ~> __or(x, y) -> bool
 	//   x    :: The first expression
 	//   y    :: The second expression
 	//   bool :: true if x or y are truthy, otherwise false
+
+	add("__or", false, func(env *Env, args List, catch *Exp) (*Exp, RetVal, error) {
+		if len(args) != 2 {
+			return nil, RetVal{}, errors.New("__or: Requires exactly 2 args.")
+		}
+
+		x, rval, err := eval(env, args[0], catch)
+		if err != nil {
+			return nil, RetVal{}, err
+		}
+		if rval.fun != nil {
+			return nil, rval, nil
+		}
+
+		if (*x).as_bool() {
+			return make_pexp(Boolean(true)), RetVal{}, nil
+		}
+
+		y, rval, err := eval(env, args[1], catch)
+		if err != nil {
+			return nil, RetVal{}, err
+		}
+		if rval.fun != nil {
+			return nil, rval, nil
+		}
+		return make_pexp(Boolean((*y).as_bool())), RetVal{}, nil
+	})
 
 	// --- ORDERING ---
 
@@ -1647,9 +1862,6 @@ func standard_env() *Env {
 	//   bool :: true if x < y, otherwise false
 
 	add("__lt", false, func(env *Env, args List, catch *Exp) (*Exp, RetVal, error) {
-		// fmt.Printf("[__lt] i adr before: %v\n", (*env).get(intern("i")))
-		// fmt.Printf("[__lt] i val before: %v\n", float64((*(*env).get(intern("i"))).(Number)))
-
 		return cmp(env, args, catch, "__lt", exp_lt)
 	})
 
@@ -1675,6 +1887,27 @@ func standard_env() *Env {
 	//   e       :: The expressions to evaluate
 	//   res     :: The last expression evaluated
 
+	add("__if", true, func(env *Env, args List, catch *Exp) (*Exp, RetVal, error) {
+		if len(args)%2 == 1 {
+			return nil, RetVal{}, errors.New("__if: Requires even number of args.")
+		}
+
+		for i := 0; i < len(args); i += 2 {
+			e, rval, err := eval(env, args[i], catch)
+			if err != nil {
+				return nil, RetVal{}, err
+			}
+			if rval.fun != nil {
+				return nil, rval, nil
+			}
+			if (*e).as_bool() {
+				return args[i+1], RetVal{}, nil
+			}
+		}
+
+		return special_nil, RetVal{}, nil
+	})
+
 	// while cond do expr ... end ~> __while(cond, expr, ...) -> res
 	//   cond :: The condition of the loop
 	//   expr :: The expressions to evaluate
@@ -1688,7 +1921,7 @@ func standard_env() *Env {
 		res := special_nil
 
 		for {
-			// println("Evaluating while condition")
+			// println("__while: Evaluating condition")
 			// fmt.Printf("[while] env before: %v\n", env)
 			// fmt.Printf("[while] i adr before: %v\n", (*env).get(intern("i")))
 			// fmt.Printf("[while] i val before: %v\n", float64((*(*env).get(intern("i"))).(Number)))
@@ -1697,40 +1930,47 @@ func standard_env() *Env {
 			if cond_err != nil {
 				return nil, RetVal{}, cond_err
 			}
+			// println("__while: cond_err is nil")
+
 			if cond_rval.fun != nil {
 				return nil, cond_rval, nil
 			}
 
+			// println("__while: cond_rval is nil")
+			// fmt.Printf("__while: cond_exp = %v\n", cond_exp)
+
 			if !(*cond_exp).as_bool() {
-				// println("While condition is false")
+				// println("__while: condition is false")
 				break
 			}
+
+			// println("__while: condition is true")
 
 			// fmt.Printf("[while] i adr during: %v\n", (*env).get(intern("i")))
 			// fmt.Printf("[while] i val during: %v\n", float64((*(*env).get(intern("i"))).(Number)))
 			// println("While condition is true")
-			// println("Evaluating interior")
+			// println("__while: Evaluating interior")
 
 			res_exp, res_rval, res_err := eval(env, args[1], catch)
 
-			// println("Evaluated interior")
+			// println("__while: Evaluated interior")
 
 			if res_err != nil {
 				// fmt.Println("%v", res_err)
 				return nil, RetVal{}, res_err
 			}
 
-			// println("err is nil")
+			// println("__while: err is nil")
 
 			if res_rval.fun != nil {
 				return nil, res_rval, nil
 			}
 
-			// println("fun is nil")
+			// println("__while: fun is nil")
 
 			res = res_exp
 
-			// println("About to start next loop")
+			// println("__while: About to start next loop")
 			// fmt.Printf("[while] env after: %v\n", env)
 			// fmt.Printf("[while] i adr after: %v\n", (*env).get(intern("i")))
 			// fmt.Printf("[while] i val after: %v\n", float64((*(*env).get(intern("i"))).(Number)))
@@ -1749,6 +1989,42 @@ func standard_env() *Env {
 	//   list :: The list of parameters
 	//   expr :: The expression representing the procedure
 	//   res  :: The result of the procedure
+
+	add("__fun", false, func(env *Env, args List, catch *Exp) (*Exp, RetVal, error) {
+		if len(args) != 2 {
+			return nil, RetVal{}, errors.New("__fun: Requires exactly 2 arg.")
+		}
+
+		list_call, ok := (*args[0]).(Call)
+
+		if ok && list_call.name == intern("__list") {
+			args[0] = make_pexp(list_call.args)
+		}
+
+		parameter_list, ok := (*args[0]).(List)
+		if !ok {
+			return nil, RetVal{}, errors.New("__fun: Requires parameter list.")
+		}
+
+		for _, parameter := range parameter_list {
+			if _, ok := (*parameter).(Symbol); !ok {
+				return nil, RetVal{}, errors.New("__fun: Parameters must be symbols.")
+			}
+		}
+
+		var body List
+
+		do_call, ok := (*args[0]).(Call)
+		if ok {
+			if _, ok := (*do_call.name).(Symbol); ok && do_call.name == intern("__do") {
+				body = do_call.args
+			}
+		} else {
+			body = List{args[1]}
+		}
+
+		return make_pexp(Procedure{parameter_list, body, env}), RetVal{}, nil
+	})
 
 	// return expr ~> __return(expr) -> expr
 	//   expr :: The expression to return
@@ -1787,12 +2063,13 @@ func standard_env() *Env {
 		if len(args) != 2 {
 			return nil, RetVal{}, errors.New("__let: Requires exactly 2 args.")
 		}
-		if (*args[0]).get_type() != "SYMBOL" {
+		if _, ok := (*args[0]).(Symbol); !ok {
 			return nil, RetVal{}, errors.New("__let: Requires symbol.")
 		}
 
 		exp, rval, err := eval(env, args[1], catch)
 		if err != nil {
+			// println("__let: Erroring out.")
 			return nil, RetVal{}, err
 		}
 		if rval.fun != nil {
@@ -1811,7 +2088,7 @@ func standard_env() *Env {
 		if len(args) != 2 {
 			return nil, RetVal{}, errors.New("__assign: Requires exactly 2 args.")
 		}
-		if (*args[0]).get_type() != "SYMBOL" {
+		if _, ok := (*args[0]).(Symbol); !ok {
 			return nil, RetVal{}, errors.New("__assign: Requires symbol.")
 		}
 
@@ -1860,7 +2137,11 @@ func standard_env() *Env {
 	return &env
 }
 
+var DEBUG bool
+
 func main() {
+	DEBUG = false
+
 	obmap = make(map[string]*Exp)
 
 	special_nil = make_pexp(Special("nil"))
@@ -1904,14 +2185,15 @@ func main() {
 		}
 
 		for _, e := range exprs {
-			// if repl {
-			fmt.Println((*e).as_string())
-			// }
+			if DEBUG {
+				fmt.Println((*e).as_string())
+			}
 
 			e, rval, err := eval(env, e, special_top_scope)
+			// fmt.Printf("%v\n", err)
 			if err != nil {
-				fmt.Println(err)
-				panic(1)
+				// fmt.Println(err)
+				panic(err)
 			}
 
 			if rval.fun != nil {

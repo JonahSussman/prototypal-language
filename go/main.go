@@ -275,14 +275,14 @@ func intern(name string) *Exp {
 }
 
 type Env struct {
-	vars  map[(*Exp)](*Exp)
+	vars  map[Symbol](*Exp)
 	outer *Env
 }
 
 func make_env(outer *Env, vars List, vals List) (*Env, error) {
 	env := Env{}
 	env.outer = outer
-	env.vars = make(map[*Exp]*Exp)
+	env.vars = make(map[Symbol]*Exp)
 	err := env.zip(vars, vals)
 	if err != nil {
 		return nil, err
@@ -291,12 +291,12 @@ func make_env(outer *Env, vars List, vals List) (*Env, error) {
 	return &env, nil
 }
 
-func (env *Env) find(sym *Exp) bool {
+func (env *Env) find(sym Symbol) bool {
 	_, ok := env.vars[sym]
 	return ok
 }
 
-func (env *Env) get(sym *Exp) (exp *Exp) {
+func (env *Env) get(sym Symbol) (exp *Exp) {
 	exp, ok := env.vars[sym]
 
 	if ok && exp != nil {
@@ -316,13 +316,17 @@ func (env *Env) zip(vars List, vals List) error {
 	}
 
 	for i := 0; i < len(vars); i++ {
-		env.vars[vars[i]] = vals[i]
+		if sym, ok := (*vars[i]).(Symbol); !ok {
+			return errors.New("Env.zip: Can only look up symbols.")
+		} else {
+			env.vars[sym] = vals[i]
+		}
 	}
 
 	return nil
 }
 
-func env_set(env *Env, sym *Exp, exp *Exp) error {
+func env_set(env *Env, sym Symbol, exp *Exp) error {
 	// println("env_set")
 	e := env
 
@@ -1319,7 +1323,7 @@ func eval(env *Env, exp *Exp, upper_catch *Exp) (immediate *Exp, return_value Re
 			return exp, RetVal{}, nil
 
 		case Symbol:
-			bind := (*env).get(exp)
+			bind := (*env).get(value)
 			if DEBUG {
 				fmt.Printf("  symbol ptr: %v\n", bind)
 				if bind != nil {
@@ -1452,10 +1456,11 @@ func eval(env *Env, exp *Exp, upper_catch *Exp) (immediate *Exp, return_value Re
 }
 
 func standard_env() *Env {
-	env := Env{make(map[*Exp]*Exp), nil}
+	env, _ := make_env(nil, List{}, List{})
 
 	add := func(name string, tco bool, fun func(env *Env, args List, catch *Exp) (*Exp, RetVal, error)) {
-		env.vars[intern(name)] = make_pexp(Primitive{fun, tco})
+		sym, _ := (*intern(name)).(Symbol)
+		env.vars[sym] = make_pexp(Primitive{fun, tco})
 	}
 
 	// --- IO ---
@@ -2063,7 +2068,10 @@ func standard_env() *Env {
 		if len(args) != 2 {
 			return nil, RetVal{}, errors.New("__let: Requires exactly 2 args.")
 		}
-		if _, ok := (*args[0]).(Symbol); !ok {
+
+		sym, ok := (*args[0]).(Symbol)
+
+		if !ok {
 			return nil, RetVal{}, errors.New("__let: Requires symbol.")
 		}
 
@@ -2076,7 +2084,7 @@ func standard_env() *Env {
 			return nil, rval, nil
 		}
 
-		env.vars[args[0]] = exp
+		env.vars[sym] = exp
 		return exp, RetVal{}, nil
 	})
 
@@ -2088,7 +2096,10 @@ func standard_env() *Env {
 		if len(args) != 2 {
 			return nil, RetVal{}, errors.New("__assign: Requires exactly 2 args.")
 		}
-		if _, ok := (*args[0]).(Symbol); !ok {
+
+		sym, ok := (*args[0]).(Symbol)
+
+		if !ok {
 			return nil, RetVal{}, errors.New("__assign: Requires symbol.")
 		}
 
@@ -2100,7 +2111,7 @@ func standard_env() *Env {
 			return nil, rval, nil
 		}
 
-		env_set(env, args[0], exp)
+		env_set(env, sym, exp)
 		return exp, RetVal{}, nil
 	})
 
@@ -2134,7 +2145,7 @@ func standard_env() *Env {
 	//   thing :: The thing to set the Meta-Thing for
 	//   meta  :: The metathing itself
 
-	return &env
+	return env
 }
 
 var DEBUG bool

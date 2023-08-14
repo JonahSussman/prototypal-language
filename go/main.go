@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"errors"
 	"flag"
 	"fmt"
 	"math"
@@ -209,10 +208,10 @@ func exp_lt(l *Exp, r *Exp) (bool, error) {
 	}
 
 	if !ok {
-		return false, errors.New("Can only order-compare same type.")
+		return false, fmt.Errorf("Can only order-compare same type.")
 	}
 
-	return false, errors.New("Cannot order-compare non-well-ordered types!")
+	return false, fmt.Errorf("Cannot order-compare non-well-ordered types!")
 }
 
 func exp_leq(l *Exp, r *Exp) (bool, error) {
@@ -238,10 +237,10 @@ func exp_leq(l *Exp, r *Exp) (bool, error) {
 	}
 
 	if !ok {
-		return false, errors.New("Can only order-compare same type.")
+		return false, fmt.Errorf("Can only order-compare same type.")
 	}
 
-	return false, errors.New("Cannot order-compare non-well-ordered types!")
+	return false, fmt.Errorf("Cannot order-compare non-well-ordered types!")
 
 }
 
@@ -312,12 +311,12 @@ func (env *Env) get(sym Symbol) (exp *Exp) {
 
 func (env *Env) zip(vars List, vals List) error {
 	if len(vars) != len(vals) {
-		return errors.New("Env.zip: Number of args does not match params.")
+		return fmt.Errorf("Env.zip: Number of args does not match params.")
 	}
 
 	for i := 0; i < len(vars); i++ {
 		if sym, ok := (*vars[i]).(Symbol); !ok {
-			return errors.New("Env.zip: Can only look up symbols.")
+			return fmt.Errorf("Env.zip: Can only look up symbols.")
 		} else {
 			env.vars[sym] = vals[i]
 		}
@@ -337,7 +336,7 @@ func env_set(env *Env, sym Symbol, exp *Exp) error {
 
 	if e == nil {
 		// println("Couldn't find symbol!")
-		return errors.New("Could not find symbol in env!")
+		return fmt.Errorf("Could not find symbol in env!")
 	}
 
 	// println("found symbol in " + fmt.Sprintf("%v", e))
@@ -494,7 +493,7 @@ func tokenize(str_src string) (output []token, err error) {
 			}
 
 			if at_end() {
-				return nil, errors.New("unterminated string")
+				return nil, fmt.Errorf("unterminated string")
 			}
 			advance()
 			var str []rune
@@ -545,7 +544,7 @@ func tokenize(str_src string) (output []token, err error) {
 			// 	advance()
 			// }
 			// if at_end() {
-			// 	return nil, errors.New("unterminated string")
+			// 	return nil, fmt.Errorf("unterminated string")
 			// }
 			// advance()
 			// var str []rune
@@ -602,7 +601,7 @@ func tokenize(str_src string) (output []token, err error) {
 				}
 				add(kind, text)
 			} else {
-				return nil, errors.New("Unexpected char: '" + string(c) + "'")
+				return nil, fmt.Errorf("Unexpected char: '" + string(c) + "'")
 			}
 		}
 	}
@@ -1441,7 +1440,7 @@ func eval(env *Env, exp *Exp, upper_catch *Exp) (immediate *Exp, return_value Re
 					return exp, RetVal{}, nil
 				}
 			default:
-				return nil, RetVal{}, errors.New("eval: Call must be PRIMITIVE or PROCEDURE.")
+				return nil, RetVal{}, fmt.Errorf("eval: Call must be PRIMITIVE or PROCEDURE.")
 			}
 
 			continue
@@ -1543,7 +1542,7 @@ func standard_env() *Env {
 
 	add("Number", false, func(env *Env, args List, catch *Exp) (*Exp, RetVal, error) {
 		if len(args) != 1 {
-			return nil, RetVal{}, errors.New("Number: Requires exactly 1 arg.")
+			return nil, RetVal{}, fmt.Errorf("Number: Requires exactly 1 arg.")
 		}
 
 		exp, rval, err := eval(env, args[0], catch)
@@ -1594,7 +1593,7 @@ func standard_env() *Env {
 
 	add("type", false, func(env *Env, args List, catch *Exp) (*Exp, RetVal, error) {
 		if len(args) != 1 {
-			return nil, RetVal{}, errors.New("type: Requires exactly 2 args.")
+			return nil, RetVal{}, fmt.Errorf("type: Requires exactly 2 args.")
 		}
 
 		exp, rval, err := eval(env, args[0], catch)
@@ -1620,7 +1619,7 @@ func standard_env() *Env {
 	// Helper function for infix arithmetic operations
 	ifx := func(env *Env, a List, c *Exp, n string, op func(float64, float64) float64) (*Exp, RetVal, error) {
 		if len(a) != 2 {
-			return nil, RetVal{}, errors.New(n + ": Requires exactly 2 args.")
+			return nil, RetVal{}, fmt.Errorf(n + ": Requires exactly 2 args.")
 		}
 
 		a, rval, err := eval_list(env, a, c)
@@ -1636,7 +1635,7 @@ func standard_env() *Env {
 		y, yOk := (*a[1]).(Number)
 
 		if !xOk || !yOk {
-			return nil, RetVal{}, errors.New(n + ": Args must be of type Number.")
+			return nil, RetVal{}, fmt.Errorf(n + ": Args must be of type Number.")
 		}
 
 		return make_pexp(Number(op(float64(x), float64(y)))), RetVal{}, nil
@@ -1688,7 +1687,7 @@ func standard_env() *Env {
 	//   num :: The negation of x
 	add("__neg", false, func(env *Env, args List, catch *Exp) (*Exp, RetVal, error) {
 		if len(args) != 1 {
-			return nil, RetVal{}, errors.New("__neg: Requires exactly 1 arg.")
+			return nil, RetVal{}, fmt.Errorf("__neg: Requires exactly 1 arg.")
 		}
 		a, rval, err := eval_list(env, args, catch)
 		if err != nil {
@@ -1700,7 +1699,7 @@ func standard_env() *Env {
 
 		x, ok := (*a[0]).(Number)
 		if !ok {
-			return nil, RetVal{}, errors.New("__neg: Args must be of type Number.")
+			return nil, RetVal{}, fmt.Errorf("__neg: Args must be of type Number.")
 		}
 
 		return make_pexp(Number(-float64(x))), RetVal{}, nil
@@ -1712,7 +1711,7 @@ func standard_env() *Env {
 	cmp := func(env *Env, a List, c *Exp, n string, op func(*Exp, *Exp) (bool, error)) (*Exp, RetVal, error) {
 		// println("cmp: 0")
 		if len(a) != 2 {
-			return nil, RetVal{}, errors.New(n + ": Requires exactly 2 args.")
+			return nil, RetVal{}, fmt.Errorf(n + ": Requires exactly 2 args.")
 		}
 		// println("cmp: 1")
 		a, rval, err := eval_list(env, a, c)
@@ -1764,7 +1763,7 @@ func standard_env() *Env {
 
 	add("__not", false, func(env *Env, args List, catch *Exp) (*Exp, RetVal, error) {
 		if len(args) != 1 {
-			return nil, RetVal{}, errors.New("__not: Requires exactly 1 arg.")
+			return nil, RetVal{}, fmt.Errorf("__not: Requires exactly 1 arg.")
 		}
 
 		e, rval, err := eval(env, args[0], catch)
@@ -1784,7 +1783,7 @@ func standard_env() *Env {
 
 	add("__and", false, func(env *Env, args List, catch *Exp) (*Exp, RetVal, error) {
 		if len(args) != 2 {
-			return nil, RetVal{}, errors.New("__and: Requires exactly 2 args.")
+			return nil, RetVal{}, fmt.Errorf("__and: Requires exactly 2 args.")
 		}
 
 		x, rval, err := eval(env, args[0], catch)
@@ -1816,7 +1815,7 @@ func standard_env() *Env {
 
 	add("__or", false, func(env *Env, args List, catch *Exp) (*Exp, RetVal, error) {
 		if len(args) != 2 {
-			return nil, RetVal{}, errors.New("__or: Requires exactly 2 args.")
+			return nil, RetVal{}, fmt.Errorf("__or: Requires exactly 2 args.")
 		}
 
 		x, rval, err := eval(env, args[0], catch)
@@ -1894,7 +1893,7 @@ func standard_env() *Env {
 
 	add("__if", true, func(env *Env, args List, catch *Exp) (*Exp, RetVal, error) {
 		if len(args)%2 == 1 {
-			return nil, RetVal{}, errors.New("__if: Requires even number of args.")
+			return nil, RetVal{}, fmt.Errorf("__if: Requires even number of args.")
 		}
 
 		for i := 0; i < len(args); i += 2 {
@@ -1920,7 +1919,7 @@ func standard_env() *Env {
 
 	add("__while", false, func(env *Env, args List, catch *Exp) (*Exp, RetVal, error) {
 		if len(args) != 2 {
-			return nil, RetVal{}, errors.New("__while: Requires exactly 2 args.")
+			return nil, RetVal{}, fmt.Errorf("__while: Requires exactly 2 args.")
 		}
 
 		res := special_nil
@@ -1997,7 +1996,7 @@ func standard_env() *Env {
 
 	add("__fun", false, func(env *Env, args List, catch *Exp) (*Exp, RetVal, error) {
 		if len(args) != 2 {
-			return nil, RetVal{}, errors.New("__fun: Requires exactly 2 arg.")
+			return nil, RetVal{}, fmt.Errorf("__fun: Requires exactly 2 arg.")
 		}
 
 		list_call, ok := (*args[0]).(Call)
@@ -2008,12 +2007,12 @@ func standard_env() *Env {
 
 		parameter_list, ok := (*args[0]).(List)
 		if !ok {
-			return nil, RetVal{}, errors.New("__fun: Requires parameter list.")
+			return nil, RetVal{}, fmt.Errorf("__fun: Requires parameter list.")
 		}
 
 		for _, parameter := range parameter_list {
 			if _, ok := (*parameter).(Symbol); !ok {
-				return nil, RetVal{}, errors.New("__fun: Parameters must be symbols.")
+				return nil, RetVal{}, fmt.Errorf("__fun: Parameters must be symbols.")
 			}
 		}
 
@@ -2036,7 +2035,7 @@ func standard_env() *Env {
 
 	add("__return", false, func(env *Env, args List, catch *Exp) (*Exp, RetVal, error) {
 		if len(args) != 1 {
-			return nil, RetVal{}, errors.New("__return: Requires exactly 1 arg.")
+			return nil, RetVal{}, fmt.Errorf("__return: Requires exactly 1 arg.")
 		}
 
 		this_catch := make_pexp(Special(fmt.Sprintf("return")))
@@ -2066,13 +2065,13 @@ func standard_env() *Env {
 
 	add("__let", false, func(env *Env, args List, catch *Exp) (*Exp, RetVal, error) {
 		if len(args) != 2 {
-			return nil, RetVal{}, errors.New("__let: Requires exactly 2 args.")
+			return nil, RetVal{}, fmt.Errorf("__let: Requires exactly 2 args.")
 		}
 
 		sym, ok := (*args[0]).(Symbol)
 
 		if !ok {
-			return nil, RetVal{}, errors.New("__let: Requires symbol.")
+			return nil, RetVal{}, fmt.Errorf("__let: Requires symbol.")
 		}
 
 		exp, rval, err := eval(env, args[1], catch)
@@ -2094,13 +2093,13 @@ func standard_env() *Env {
 
 	add("__assign", false, func(env *Env, args List, catch *Exp) (*Exp, RetVal, error) {
 		if len(args) != 2 {
-			return nil, RetVal{}, errors.New("__assign: Requires exactly 2 args.")
+			return nil, RetVal{}, fmt.Errorf("__assign: Requires exactly 2 args.")
 		}
 
 		sym, ok := (*args[0]).(Symbol)
 
 		if !ok {
-			return nil, RetVal{}, errors.New("__assign: Requires symbol.")
+			return nil, RetVal{}, fmt.Errorf("__assign: Requires symbol.")
 		}
 
 		exp, rval, err := eval(env, args[1], catch)

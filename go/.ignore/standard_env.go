@@ -1,4 +1,4 @@
-package standardenv
+package main
 
 import (
 	"bufio"
@@ -8,31 +8,30 @@ import (
 	"os"
 	"reflect"
 	"strconv"
-
-	. "github.com/JonahSussman/prototypal-language/go/lot_types"
 )
 
-var Obmap map[string]Exp
-
-func Intern(name string) Exp {
-	if val, ok := Obmap[name]; ok {
-		return val
-	}
-	sym := Symbol(name)
-	Obmap[name] = &sym
-	return &sym
-}
-
-func Standard_env() *Env {
-	env, _ := Make_env(nil, List{}, List{})
+func standard_env() *Env {
+	env, _ := make_env(nil, List{}, List{})
 
 	add := func(name string, tco bool, fun func(env *Env, args List, catch Exp) (Exp, RetVal, error)) {
-		sym, _ := Intern(name).(*Symbol)
-		env.Vars[*sym] = &Primitive{fun, tco, name}
+		sym, _ := intern(name).(*Symbol)
+		env.vars[*sym] = &Primitive{fun, tco, name}
 	}
 
-	// --- IO ---
+	standard_env_io(add)
+	standard_env_types(add)
+	standard_env_arithmetic(add)
+	standard_env_comparison_and_ordering(add)
+	standard_env_control_flow(add)
+	standard_env_procedures(add)
+	standard_env_variables(add)
+	standard_env_thing_modifications(add)
 
+	return env
+}
+
+// --- IO ---
+func standard_env_io(add func(string, bool, func(*Env, List, Exp) (Exp, RetVal, error))) {
 	// print(expr, ...) -> nil
 	//   expr :: The expressions to print
 
@@ -41,14 +40,14 @@ func Standard_env() *Env {
 		if err != nil {
 			return nil, RetVal{}, err
 		}
-		if rval.Fun != nil {
+		if rval.fun != nil {
 			return nil, rval, nil
 		}
 		for _, e := range list {
-			fmt.Print(e.As_string())
+			fmt.Print(e.as_string())
 		}
 
-		return &Special_nil, RetVal{}, nil
+		return &special_nil, RetVal{}, nil
 	})
 
 	// println(expr, ...) -> nil
@@ -59,15 +58,15 @@ func Standard_env() *Env {
 		if err != nil {
 			return nil, RetVal{}, err
 		}
-		if rval.Fun != nil {
+		if rval.fun != nil {
 			return nil, rval, nil
 		}
 		for _, e := range list {
-			fmt.Print(e.As_string())
+			fmt.Print(e.as_string())
 		}
 		fmt.Println()
 
-		return &Special_nil, RetVal{}, nil
+		return &special_nil, RetVal{}, nil
 	})
 
 	// input(expr, ...) -> str
@@ -79,11 +78,11 @@ func Standard_env() *Env {
 		if err != nil {
 			return nil, RetVal{}, err
 		}
-		if rval.Fun != nil {
+		if rval.fun != nil {
 			return nil, rval, nil
 		}
 		for _, e := range list {
-			fmt.Print(e.As_string())
+			fmt.Print(e.as_string())
 		}
 
 		reader := bufio.NewReader(os.Stdin)
@@ -99,9 +98,10 @@ func Standard_env() *Env {
 
 	// gettime() -> num
 	//   num :: The current Unix time
+}
 
-	// --- TYPES ---
-
+// --- TYPES ---
+func standard_env_types(add func(string, bool, func(*Env, List, Exp) (Exp, RetVal, error))) {
 	// Boolean(expr) -> bool
 	//   expr :: The expression to convert to a Boolean
 	//   bool :: The truthiness of expr
@@ -119,7 +119,7 @@ func Standard_env() *Env {
 		if err != nil {
 			return nil, RetVal{}, err
 		}
-		if rval.Fun != nil {
+		if rval.fun != nil {
 			return nil, rval, nil
 		}
 
@@ -137,14 +137,14 @@ func Standard_env() *Env {
 		case *String:
 			conv, err := strconv.Atoi(string(*value))
 			if err != nil {
-				return &Special_nil, RetVal{}, nil
+				return &special_nil, RetVal{}, nil
 			} else {
 				x := Number(conv)
 				return &x, RetVal{}, nil
 			}
 		}
 
-		return &Special_nil, RetVal{}, nil
+		return &special_nil, RetVal{}, nil
 	})
 
 	// String(expr, ...) -> str
@@ -173,7 +173,7 @@ func Standard_env() *Env {
 		if err != nil {
 			return nil, RetVal{}, err
 		}
-		if rval.Fun != nil {
+		if rval.fun != nil {
 			return nil, rval, nil
 		}
 
@@ -187,9 +187,10 @@ func Standard_env() *Env {
 		ret := String(name)
 		return &ret, RetVal{}, nil
 	})
+}
 
-	// --- ARITHMETIC ---
-
+// --- ARITHMETIC ---
+func standard_env_arithmetic(add func(string, bool, func(*Env, List, Exp) (Exp, RetVal, error))) {
 	// Helper function for infix arithmetic operations
 	ifx := func(env *Env, a List, c Exp, n string, op func(float64, float64) float64) (Exp, RetVal, error) {
 		if len(a) != 2 {
@@ -201,7 +202,7 @@ func Standard_env() *Env {
 		if err != nil {
 			return nil, RetVal{}, err
 		}
-		if rval.Fun != nil {
+		if rval.fun != nil {
 			return nil, rval, nil
 		}
 
@@ -268,7 +269,7 @@ func Standard_env() *Env {
 		if err != nil {
 			return nil, RetVal{}, err
 		}
-		if rval.Fun != nil {
+		if rval.fun != nil {
 			return nil, rval, nil
 		}
 
@@ -280,9 +281,10 @@ func Standard_env() *Env {
 		ret := Number(float64(-*x))
 		return &ret, RetVal{}, nil
 	})
+}
 
-	// --- COMPARISON ---
-
+// --- COMPARISON AND ORDERING ---
+func standard_env_comparison_and_ordering(add func(string, bool, func(*Env, List, Exp) (Exp, RetVal, error))) {
 	// Helper function for infix comparison and ordering operations
 	cmp := func(env *Env, a List, c Exp, n string, op func(Exp, Exp) (bool, error)) (Exp, RetVal, error) {
 		// println("cmp: 0")
@@ -295,7 +297,7 @@ func Standard_env() *Env {
 			return nil, RetVal{}, err
 		}
 		// println("cmp: 2")
-		if rval.Fun != nil {
+		if rval.fun != nil {
 			return nil, rval, nil
 		}
 
@@ -313,6 +315,8 @@ func Standard_env() *Env {
 		return &ret, RetVal{}, nil
 	}
 
+	/// --- COMPARSION ---
+
 	// x == y ~> __eq(x, y) -> bool
 	//   x    :: The first expression
 	//   y    :: The second expression
@@ -320,7 +324,7 @@ func Standard_env() *Env {
 	//           otherwise false.
 
 	add("__eq", false, func(env *Env, args List, catch Exp) (Exp, RetVal, error) {
-		return cmp(env, args, catch, "__eq", Exp_eq)
+		return cmp(env, args, catch, "__eq", exp_eq)
 	})
 
 	// x != y ~> __neq(x, y) -> bool
@@ -330,7 +334,7 @@ func Standard_env() *Env {
 	//           otherwise true.
 
 	add("__neq", false, func(env *Env, args List, catch Exp) (Exp, RetVal, error) {
-		return cmp(env, args, catch, "__neq", Exp_neq)
+		return cmp(env, args, catch, "__neq", exp_neq)
 	})
 
 	// --- LOGIC ---
@@ -348,11 +352,11 @@ func Standard_env() *Env {
 		if err != nil {
 			return nil, RetVal{}, err
 		}
-		if rval.Fun != nil {
+		if rval.fun != nil {
 			return nil, rval, nil
 		}
 
-		ret := Boolean(!e.As_bool())
+		ret := Boolean(!e.as_bool())
 		return &ret, RetVal{}, nil
 	})
 
@@ -370,11 +374,11 @@ func Standard_env() *Env {
 		if err != nil {
 			return nil, RetVal{}, err
 		}
-		if rval.Fun != nil {
+		if rval.fun != nil {
 			return nil, rval, nil
 		}
 
-		if !x.As_bool() {
+		if !x.as_bool() {
 			ret := Boolean(false)
 			return &ret, RetVal{}, nil
 		}
@@ -383,11 +387,11 @@ func Standard_env() *Env {
 		if err != nil {
 			return nil, RetVal{}, err
 		}
-		if rval.Fun != nil {
+		if rval.fun != nil {
 			return nil, rval, nil
 		}
 
-		ret := Boolean(y.As_bool())
+		ret := Boolean(y.as_bool())
 		return &ret, RetVal{}, nil
 	})
 
@@ -405,11 +409,11 @@ func Standard_env() *Env {
 		if err != nil {
 			return nil, RetVal{}, err
 		}
-		if rval.Fun != nil {
+		if rval.fun != nil {
 			return nil, rval, nil
 		}
 
-		if x.As_bool() {
+		if x.as_bool() {
 			ret := Boolean(true)
 			return &ret, RetVal{}, nil
 		}
@@ -418,11 +422,11 @@ func Standard_env() *Env {
 		if err != nil {
 			return nil, RetVal{}, err
 		}
-		if rval.Fun != nil {
+		if rval.fun != nil {
 			return nil, rval, nil
 		}
 
-		ret := Boolean(y.As_bool())
+		ret := Boolean(y.as_bool())
 		return &ret, RetVal{}, nil
 	})
 
@@ -434,7 +438,7 @@ func Standard_env() *Env {
 	//   bool :: true if x > y, otherwise false
 
 	add("__gt", false, func(env *Env, args List, catch Exp) (Exp, RetVal, error) {
-		return cmp(env, args, catch, "__gt", Exp_gt)
+		return cmp(env, args, catch, "__gt", exp_gt)
 	})
 
 	// x >= y ~> __geq(x, y) -> bool
@@ -443,7 +447,7 @@ func Standard_env() *Env {
 	//   bool :: true if x >= y, otherwise false
 
 	add("__geq", false, func(env *Env, args List, catch Exp) (Exp, RetVal, error) {
-		return cmp(env, args, catch, "__geq", Exp_geq)
+		return cmp(env, args, catch, "__geq", exp_geq)
 	})
 
 	// x < y ~> __lt(x, y) -> bool
@@ -452,7 +456,7 @@ func Standard_env() *Env {
 	//   bool :: true if x < y, otherwise false
 
 	add("__lt", false, func(env *Env, args List, catch Exp) (Exp, RetVal, error) {
-		return cmp(env, args, catch, "__lt", Exp_lt)
+		return cmp(env, args, catch, "__lt", exp_lt)
 	})
 
 	// x <= y ~> __leq(x, y) -> bool
@@ -461,11 +465,12 @@ func Standard_env() *Env {
 	//   bool :: true if x <= y, otherwise false
 
 	add("__leq", false, func(env *Env, args List, catch Exp) (Exp, RetVal, error) {
-		return cmp(env, args, catch, "__leq", Exp_leq)
+		return cmp(env, args, catch, "__leq", exp_leq)
 	})
+}
 
-	// --- CONTROL FLOW ---
-
+// --- CONTROL FLOW ---
+func standard_env_control_flow(add func(string, bool, func(*Env, List, Exp) (Exp, RetVal, error))) {
 	// do expr ... end ~> __do(expr, ...) -> res
 	//   expr :: The expressions to evaluate, in order
 	//   res  :: The last expression, evaluated
@@ -487,15 +492,15 @@ func Standard_env() *Env {
 			if err != nil {
 				return nil, RetVal{}, err
 			}
-			if rval.Fun != nil {
+			if rval.fun != nil {
 				return nil, rval, nil
 			}
-			if e.As_bool() {
+			if e.as_bool() {
 				return args[i+1], RetVal{}, nil
 			}
 		}
 
-		return &Special_nil, RetVal{}, nil
+		return &special_nil, RetVal{}, nil
 	})
 
 	// while cond do expr ... end ~> __while(cond, expr, ...) -> res
@@ -508,13 +513,13 @@ func Standard_env() *Env {
 			return nil, RetVal{}, fmt.Errorf("__while: Requires exactly 2 args.")
 		}
 
-		var res Exp = &Special_nil
+		var res Exp = &special_nil
 
 		for {
 			// println("__while: Evaluating condition")
 			// fmt.Printf("[while] env before: %v\n", env)
-			// fmt.Printf("[while] i adr before: %v\n", (*env).Get(Intern("i")))
-			// fmt.Printf("[while] i val before: %v\n", float64((*(*env).Get(Intern("i"))).(Number)))
+			// fmt.Printf("[while] i adr before: %v\n", (*env).get(intern("i")))
+			// fmt.Printf("[while] i val before: %v\n", float64((*(*env).get(intern("i"))).(Number)))
 
 			cond_exp, cond_rval, cond_err := eval(env, args[0], catch)
 			if cond_err != nil {
@@ -522,22 +527,22 @@ func Standard_env() *Env {
 			}
 			// println("__while: cond_err is nil")
 
-			if cond_rval.Fun != nil {
+			if cond_rval.fun != nil {
 				return nil, cond_rval, nil
 			}
 
 			// println("__while: cond_rval is nil")
 			log.Printf("__while: cond_exp is %v\n", cond_exp)
 
-			if !cond_exp.As_bool() {
+			if !cond_exp.as_bool() {
 				log.Println("__while: condition is false")
 				break
 			}
 
 			log.Println("__while: condition is true")
 
-			// fmt.Printf("[while] i adr during: %v\n", (*env).Get(Intern("i")))
-			// fmt.Printf("[while] i val during: %v\n", float64((*(*env).Get(Intern("i"))).(Number)))
+			// fmt.Printf("[while] i adr during: %v\n", (*env).get(intern("i")))
+			// fmt.Printf("[while] i val during: %v\n", float64((*(*env).get(intern("i"))).(Number)))
 			// println("While condition is true")
 			// println("__while: Evaluating interior")
 
@@ -552,7 +557,7 @@ func Standard_env() *Env {
 
 			// println("__while: err is nil")
 
-			if res_rval.Fun != nil {
+			if res_rval.fun != nil {
 				return nil, res_rval, nil
 			}
 
@@ -562,8 +567,8 @@ func Standard_env() *Env {
 
 			// println("__while: About to start next loop")
 			// fmt.Printf("[while] env after: %v\n", env)
-			// fmt.Printf("[while] i adr after: %v\n", (*env).Get(Intern("i")))
-			// fmt.Printf("[while] i val after: %v\n", float64((*(*env).Get(Intern("i"))).(Number)))
+			// fmt.Printf("[while] i adr after: %v\n", (*env).get(intern("i")))
+			// fmt.Printf("[while] i val after: %v\n", float64((*(*env).get(intern("i"))).(Number)))
 
 			// reader := bufio.NewReader(os.Stdin)
 			// reader.ReadString('\n')
@@ -571,9 +576,10 @@ func Standard_env() *Env {
 
 		return res, RetVal{}, nil
 	})
+}
 
-	// --- PROCEDURES ---
-
+// --- PROCEDURES ---
+func standard_env_procedures(add func(string, bool, func(*Env, List, Exp) (Exp, RetVal, error))) {
 	// fun [s, ...] expr ~> __fun(list, expr) -> res
 	//   s    :: The symbols for the parameters
 	//   list :: The list of parameters
@@ -587,8 +593,8 @@ func Standard_env() *Env {
 
 		list_call, ok := args[0].(*Call)
 
-		if ok && list_call.Name == Intern("__list") {
-			args[0] = &(list_call.Args)
+		if ok && list_call.name == intern("__list") {
+			args[0] = &(list_call.args)
 		}
 
 		parameter_list, ok := args[0].(*List)
@@ -606,8 +612,8 @@ func Standard_env() *Env {
 
 		do_call, ok := args[0].(*Call)
 		if ok {
-			if _, ok := do_call.Name.(*Symbol); ok && do_call.Name == Intern("__do") {
-				body = do_call.Args
+			if _, ok := do_call.name.(*Symbol); ok && do_call.name == intern("__do") {
+				body = do_call.args
 			}
 		} else {
 			body = List{args[1]}
@@ -632,9 +638,9 @@ func Standard_env() *Env {
 		if err != nil {
 			return nil, RetVal{}, err
 		}
-		if rval.Fun != nil {
-			if rval.Fun == this_catch {
-				return nil, RetVal{catch, rval.Val}, nil
+		if rval.fun != nil {
+			if rval.fun == this_catch {
+				return nil, RetVal{catch, rval.val}, nil
 			}
 
 			// Don't know how this could ever happen tbh
@@ -643,9 +649,10 @@ func Standard_env() *Env {
 
 		return nil, RetVal{catch, exp}, nil
 	})
+}
 
-	// --- VARIABLES ---
-
+// --- VARIABLES ---
+func standard_env_variables(add func(string, bool, func(*Env, List, Exp) (Exp, RetVal, error))) {
 	// let sym = expr ~> __let(sym, expr) -> expr
 	//   sym  :: The symbol to set
 	//   expr :: The expr to set the symbol to
@@ -666,11 +673,11 @@ func Standard_env() *Env {
 			// println("__let: Erroring out.")
 			return nil, RetVal{}, err
 		}
-		if rval.Fun != nil {
+		if rval.fun != nil {
 			return nil, rval, nil
 		}
 
-		env.Vars[*sym] = exp
+		env.vars[*sym] = exp
 		return exp, RetVal{}, nil
 	})
 
@@ -693,14 +700,17 @@ func Standard_env() *Env {
 		if err != nil {
 			return nil, RetVal{}, err
 		}
-		if rval.Fun != nil {
+		if rval.fun != nil {
 			return nil, rval, nil
 		}
 
-		Env_set(env, *sym, exp)
+		env_set(env, *sym, exp)
 		return exp, RetVal{}, nil
 	})
+}
 
+// --- THING MODIFICATIONS ---
+func standard_env_thing_modifications(add func(string, bool, func(*Env, List, Exp) (Exp, RetVal, error))) {
 	// --- THING MODIFICATIONS ---
 
 	// thing.sym   ~> __get(thing, sym) -> res
@@ -731,5 +741,4 @@ func Standard_env() *Env {
 	//   thing :: The thing to set the Meta-Thing for
 	//   meta  :: The metathing itself
 
-	return env
 }

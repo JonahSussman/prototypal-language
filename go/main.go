@@ -35,7 +35,7 @@ type (
 	Special string
 
 	Thing struct {
-		table map[TrivialExp]Exp
+		table *map[any]Exp
 		meta  Exp
 	}
 
@@ -68,6 +68,38 @@ func (x *String) tag_trivial()  {}
 func (x *Number) tag_trivial()  {}
 func (x *Boolean) tag_trivial() {}
 
+func (x *Thing) find(exp TrivialExp) (Exp, bool) {
+	switch c := exp.(type) {
+	case *Symbol:
+		ret, ok := (*x.table)[*c]
+		return ret, ok
+	case *String:
+		ret, ok := (*x.table)[*c]
+		return ret, ok
+	case *Number:
+		ret, ok := (*x.table)[*c]
+		return ret, ok
+	case *Boolean:
+		ret, ok := (*x.table)[*c]
+		return ret, ok
+	}
+
+	return nil, false
+}
+
+func (x *Thing) set(k TrivialExp, v Exp) {
+	switch c := k.(type) {
+	case *Symbol:
+		(*x.table)[*c] = v
+	case *String:
+		(*x.table)[*c] = v
+	case *Number:
+		(*x.table)[*c] = v
+	case *Boolean:
+		(*x.table)[*c] = v
+	}
+}
+
 func (x *Number) as_string() string  { return fmt.Sprintf("%v", *x) }
 func (x *String) as_string() string  { return string(*x) }
 func (x *Boolean) as_string() string { return fmt.Sprintf("%v", *x) }
@@ -93,11 +125,21 @@ func (t *Thing) as_string() string {
 	builder.WriteString("{ ")
 
 	i := 0
-	for k, v := range t.table {
-		builder.WriteString(k.as_string())
+	for k, v := range *t.table {
+		switch c := k.(type) {
+		case Number:
+			builder.WriteString((&c).as_string())
+		case String:
+			builder.WriteString((&c).as_string())
+		case Boolean:
+			builder.WriteString((&c).as_string())
+		case Symbol:
+			builder.WriteString((&c).as_string())
+		}
+		// builder.WriteString((&k).(Exp).as_string())
 		builder.WriteString(" = ")
 		builder.WriteString(v.as_string())
-		if i < len(t.table)-1 {
+		if i < len(*t.table)-1 {
 			builder.WriteString(", ")
 		}
 		i++
@@ -1543,6 +1585,22 @@ func standard_env() *Env {
 	//   expr :: The expression to convert to a Boolean
 	//   bool :: The truthiness of expr
 
+	add("Boolean", false, func(env *Env, args List, catch Exp) (Exp, RetVal, error) {
+		if len(args) != 1 {
+			return nil, RetVal{}, fmt.Errorf("Boolean: Requires exactly 1 arg.")
+		}
+		exp, rval, err := eval(env, args[0], catch)
+		if err != nil {
+			return nil, RetVal{}, err
+		}
+		if rval.fun != nil {
+			return nil, rval, nil
+		}
+
+		ret := Boolean(exp.as_bool())
+		return &ret, RetVal{}, nil
+	})
+
 	// Number(expr) -> res
 	//   expr :: The expression to convert to a Number
 	//   res  :: The number if successful, otherwise nil
@@ -1587,15 +1645,71 @@ func standard_env() *Env {
 	// String(expr, ...) -> str
 	//   expr :: The expressions to convert to string.
 	//   str  :: The concatenated resultant string
+	add("String", false, func(env *Env, args List, catch Exp) (Exp, RetVal, error) {
+		if len(args) < 1 {
+			return nil, RetVal{}, fmt.Errorf("String: Requires at least 1 arg.")
+		}
+		args, rval, err := eval_list(env, args, catch)
+		if err != nil {
+			return nil, RetVal{}, err
+		}
+		if rval.fun != nil {
+			return nil, rval, nil
+		}
+
+		var builder strings.Builder
+		for _, e := range args {
+			builder.WriteString(e.as_string())
+		}
+
+		ret := String(builder.String())
+		return &ret, RetVal{}, nil
+	})
 
 	// { fieldlist? } ~> __thing(key, value, ...) -> thing
 	//   key   :: The key of the field
 	//   value :: The value to set. NOTE: key and values must come in pairs
 	//   thing :: The resultant thing
+	add("__thing", false, func(env *Env, args List, catch Exp) (Exp, RetVal, error) {
+		if len(args)%2 == 1 {
+			return nil, RetVal{}, fmt.Errorf("__thing: Requires even number of args.")
+		}
+
+		table := make(map[any]Exp)
+		ret := Thing{&table, &special_nil}
+
+		for i := 0; i < len(args); i += 2 {
+			if sym, ok := args[i].(*Symbol); ok {
+				str := String(*sym)
+				args[i] = &str
+			}
+			e, rval, err := eval(env, args[i+1], catch)
+			if err != nil {
+				return nil, RetVal{}, err
+			}
+			if rval.fun != nil {
+				return nil, rval, nil
+			}
+
+			ret.set(args[i].(TrivialExp), e)
+		}
+
+		return &ret, RetVal{}, nil
+	})
 
 	// [ expr, ... ] ~> __list(expr, ...) -> list
 	//   expr :: The list of expressions to evaluate
 	//   list :: The list of evaluated expressions
+	add("__list", false, func(env *Env, args List, catch Exp) (Exp, RetVal, error) {
+		e, rval, err := eval_list(env, args, catch)
+		if err != nil {
+			return nil, RetVal{}, err
+		}
+		if rval.fun != nil {
+			return nil, rval, nil
+		}
+		return &e, RetVal{}, nil
+	})
 
 	// type(expr) -> str
 	//   expr :: The expression to get the type of
@@ -1616,7 +1730,8 @@ func standard_env() *Env {
 
 		var name string
 		if t := reflect.TypeOf(exp); t.Kind() == reflect.Ptr {
-			name = "*" + t.Elem().Name()
+			// name = "*" + t.Elem().Name()
+			name = t.Elem().Name()
 		} else {
 			name = t.Name()
 		}
@@ -1722,28 +1837,22 @@ func standard_env() *Env {
 
 	// Helper function for infix comparison and ordering operations
 	cmp := func(env *Env, a List, c Exp, n string, op func(Exp, Exp) (bool, error)) (Exp, RetVal, error) {
-		// println("cmp: 0")
 		if len(a) != 2 {
 			return nil, RetVal{}, fmt.Errorf(n + ": Requires exactly 2 args.")
 		}
-		// println("cmp: 1")
 		a, rval, err := eval_list(env, a, c)
 		if err != nil {
 			return nil, RetVal{}, err
 		}
-		// println("cmp: 2")
 		if rval.fun != nil {
 			return nil, rval, nil
 		}
 
-		// println("cmp: 3")
 		res, err := op(a[0], a[1])
 		if err != nil {
 			fmt.Printf("%v\n", err)
 			return nil, RetVal{}, err
 		}
-
-		// println("cmp: 4")
 
 		ret := Boolean(res)
 		log.Printf("%v: Returning %v (%p)\n", n, ret, &ret)
@@ -2146,6 +2255,60 @@ func standard_env() *Env {
 	//   sym   :: The symbol to use as a key
 	//   expr  :: The expression to use as a key
 	//   res   :: The value if found when accessing, otherwise nil
+	add("__get", false, func(env *Env, args List, catch Exp) (Exp, RetVal, error) {
+		if len(args) != 2 {
+			return nil, RetVal{}, fmt.Errorf("__get: Requires exactly 2 args.")
+		}
+
+		args, rval, err := eval_list(env, args, catch)
+		if err != nil {
+			return nil, RetVal{}, err
+		}
+		if rval.fun != nil {
+			return nil, rval, nil
+		}
+
+		thing, ok := args[0].(*Thing)
+		if !ok {
+			return nil, RetVal{}, fmt.Errorf("__get: Only works on Things. (Accessing nil?)")
+		}
+
+		key, ok := args[1].(TrivialExp)
+		if !ok {
+			return nil, RetVal{}, fmt.Errorf("__get: Can only look up trivial expressions on Things.")
+		}
+
+		if res, ok := thing.find(key); ok {
+			return res, RetVal{}, nil
+		}
+
+		if thing.meta == nil {
+			return &special_nil, RetVal{}, nil
+		}
+
+		meta, ok := thing.meta.(*Thing)
+		if !ok {
+			return nil, RetVal{}, fmt.Errorf("__get: Meta must be a Thing.")
+		}
+
+		// metatable := meta.table
+		getstr := String("__get")
+		metaget, ok := meta.find(&getstr)
+		if !ok {
+			return &special_nil, RetVal{}, nil
+		}
+
+		if metaget_thing, ok := metaget.(*Thing); ok {
+			return eval(env, &Call{intern("__get"), List{metaget_thing, args[1]}}, catch)
+		}
+
+		metaget_procedure, ok := metaget.(*Procedure)
+		if !ok {
+			return &special_nil, RetVal{}, nil
+		}
+
+		return eval(env, &Call{metaget_procedure, List{thing, args[1]}}, catch)
+	})
 
 	// thing.sym   = val ~> __set(thing, sym, val) -> val
 	// thing[expr] = val ~> __set(thing, expr, val) -> val
